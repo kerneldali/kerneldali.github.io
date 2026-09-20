@@ -370,6 +370,11 @@ mov rbp, [rsp+rbp*8-502C47F0h]  becomes  mov rbp, [rsp+8]
 </ul>
 <p>For this run, entry_rsp was <code>94659FFA78h</code> and caller_return was image base plus <code>274Eh</code>. These are observations, not values to copy into another launch.</p>
 <p>Step into the export's jump. The interpreter code traversed here lies in section <code>.VI8</code>, with RVA interval <strong>[14000h,27FDB4h)</strong>. The end is exclusive. In another build obtain actual section bounds and determine which ranges contain VM execution; do not assume the same section name or boundaries.</p>
+<p>Before starting the trace, I used a one-shot access breakpoint on the executable's <code>.text</code> memory region. That gave me a controlled stop while I checked the section layout in x64dbg's Memory Map; the screenshot shows the selected <code>.text</code> range and the VM section below it. The breakpoint is a way to reach and inspect the live code, not the definition of the VM exit.</p>
+<figure class="shot">
+<a class="shot-link" href="/images/vmp-exit-range-memory-map.png" target="_blank" rel="noopener"><img src="/images/vmp-exit-range-memory-map.png" alt="x64dbg Memory Map showing the selected .text region and the .VI8 section in lab_vmp.exe"></a>
+<figcaption>x64dbg Memory Map: the one-shot access breakpoint was placed on <code>.text</code> while I checked the live section ranges before tracing the VM.</figcaption>
+</figure>
 <p>Now trace individual instructions until execution leaves the suspected VM range. In x64dbg's command box, the following logs a compact pre-instruction state:</p>
 <pre><code class="language-text">TraceSetLog &quot;{p:cip}|{p:rsp}|{p:rax}|{p:rcx}|{i:cip}&quot;, 1
 TraceSetLogFile &quot;C:\temp\hello_trace.txt&quot;
