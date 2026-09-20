@@ -1,0 +1,119 @@
+/* Site additions layered on top of the neon theme. */
+
+/* Page atmosphere */
+.main {
+    background: radial-gradient(ellipse 900px 520px at 12% -8%, rgba(121, 206, 235, 0.1), transparent 62%),
+        radial-gradient(ellipse 720px 520px at 100% 0%, rgba(139, 124, 246, 0.1), transparent 58%),
+        var(--theme-first);
+}
+
+html {
+    scrollbar-color: var(--accent-first) var(--theme-first);
+}
+
+/* Contents button on post pages */
+.post-info {
+    position: relative;
+}
+
+.contents-toggle {
+    display: inline-block;
+    margin: 8px 8px 0;
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--content-second) !important;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.contents-toggle:hover {
+    transform: translateY(-2px);
+    background: var(--accent-second);
+    border-color: var(--accent-first);
+    color: var(--accent-first) !important;
+    box-shadow: 0 8px 18px rgba(121, 206, 235, 0.25);
+}
+
+/* Archives */
+.archives-container {
+    align-self: center;
+    width: 1000px;
+    max-width: calc(100% - 32px);
+    margin-top: 24px;
+    padding: 24px 32px;
+    background: var(--theme-second);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
+}
+
+.archives-container .year {
+    font-size: 22px;
+    margin: 22px 0 12px;
+    padding: 2px 0 2px 12px;
+    border-left: 3px solid var(--accent-first);
+    border-radius: 0;
+    background: none;
+}
+
+.archives-container .post a {
+    color: var(--content-first) !important;
+}
+
+.archives-container .post a:hover {
+    color: var(--accent-first) !important;
+}
+
+.archives-container .archives-post-title {
+    font-size: 15px;
+}
+
+/* Tags index */
+.tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-self: center;
+    width: 1000px;
+    max-width: calc(100% - 32px);
+    padding: 32px;
+}
+
+.tags-container .tag {
+    display: inline-block;
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--content-first) !important;
+    font-size: 14px;
+}
+
+.tags-container .tag:hover {
+    background: var(--accent-second);
+    border-color: var(--accent-first);
+    color: var(--accent-first) !important;
+}
+
+/* Tag detail */
+.current-tag-container {
+    text-align: center;
+    padding: 32px 16px 0;
+    align-self: center;
+}
+
+.current-tag-container .title {
+    font-size: 24px;
+}
+
+/* Keep media inside the post card */
+.post-detail img,
+.post-detail iframe,
+.post-detail table {
+    max-width: 100%;
+}

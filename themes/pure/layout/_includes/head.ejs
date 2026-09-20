@@ -1,0 +1,46 @@
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title><%= page.archive ? `Archive - ${config.title}` : page.tag ? `#${page.tag} - ${config.title}` : page.title ? `${page.title} - ${config.title}` : `${config.title} - ${config.subtitle || ''}` %></title>
+
+<meta name="description" content="<%= page.description || config.description %>">
+<meta name="author" content="<%= config.author %>">
+<meta property="og:type" content="<%= page.layout === 'post' ? 'article' : 'website' %>">
+<meta property="og:title" content="<%= page.title ? `${page.title} - ${config.title}` : config.title %>">
+<meta property="og:description" content="<%= page.description || config.description %>">
+<meta property="og:site_name" content="<%= config.title %>">
+<meta name="twitter:card" content="summary">
+
+<!-- Icon -->
+<link rel="icon" href="<%- url_for(theme.favicon) %>">
+
+<!-- Fonts -->
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,700;0,800;1,400&family=Roboto+Mono:ital@0;1&family=Silkscreen&display=swap" as="style" onload="this.onload=null; this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,700;0,800;1,400&family=Roboto+Mono:ital@0;1&family=Silkscreen&display=swap"></noscript>
+
+<% if (theme.katex) { %>
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css" as="style" onload="this.onload=null; this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css"></noscript>
+<% } %>
+
+<!-- Style -->
+<%- css('css/theme') %>
+<%- css('css/site') %>
+<% if (page.study) { %>
+<%- css('study') %>
+<%- css('css/article') %>
+<% } %>
+
+<% if (theme.force_https) { %>
+<meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+<% } %>
+
+<% if (theme.web_analytics && theme.web_analytics.enable && theme.web_analytics.google) { %>
+<script async src="https://www.googletagmanager.com/gtag/js?id=<%= theme.web_analytics.google %>"></script>
+<script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', '<%= theme.web_analytics.google %>');
+</script>
+<% } %>

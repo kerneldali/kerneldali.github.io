@@ -1,0 +1,41 @@
+<div class="archives-container gt-bg-theme-color-second">
+    <div class="gt-post-content">
+        <%
+        if (!page.year) {
+            var years = [];
+            page.posts.forEach(function (post) {
+                var post_year = post.date.year();
+                if (years.indexOf(post_year) === -1) {
+                    years.push(post_year);
+                }
+            });
+        } else {
+            var years = [page.year];
+        }
+        %>
+        <% years.forEach(function (year) { %>
+            <h2 id="year-<%- year %>" class="year gt-c-content-color-first"><%- year %></h2>
+            <% page.posts.forEach(function (post) { %>
+                <% if (post.date.year() == year) { %>
+                    <div class="post" style="margin-left: 15px;">
+                        <a href="<%- url_for(post.path) %>">
+                            <div class="post-title gt-c-content-color-first">
+                                <small><b><%- date(post.date, 'MM-DD') %></b></small>
+                                <div class="archives-post-title"><%= post.title || '(Untitled)' %></div>
+                            </div>
+                        </a>
+                    </div>
+                <% } %>
+            <% }); %>
+        <% }); %>
+    </div>
+</div>
+
+<div class="pagination-container">
+    <% if (page.prev) { %>
+        <a href="<%- url_for(page.prev_link) %>" class="prev-page gt-a-link">Newer</a>
+    <% } %>
+    <% if (page.next) { %>
+        <a href="<%- url_for(page.next_link) %>" class="next-page gt-a-link">Older</a>
+    <% } %>
+</div>

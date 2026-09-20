@@ -1,0 +1,856 @@
+---
+title: "Reading a VMProtect Virtualized Function: From Entry Stub to VM Exit"
+slug: inside-the-vm
+layout: post
+date: 2026-09-18
+study: true
+tags:
+  - VMProtect
+  - Reverse Engineering
+description: Following a VMProtect 3.9.4 virtualized function from its entry stub through decode, dispatch, handlers and the exit that returns control to native code.
+---
+<div class="study-intro"><p class="dek">Following <code>vmp_target</code> from its first stack write to the transfer that returns control to native code.</p><div class="trace-strip"><span class="trace-caption">THE PATH IN THIS SAMPLE <small>RVAs, hexadecimal</small></span><div><a href="#entry-lab">1440 <small>entry</small></a><span>→</span><a href="#6-decoding-and-dispatch-with-actual-instructions">1D79B <small>dispatch</small></a><span>⋯</span><a href="#exit-lab">21FAA <small>exit transfer</small></a><span>→</span><a href="#exit-lab">26C8 <small>native code</small></a></div></div></div>
+<p>The sample is an exported <code>vmp_target</code> in <strong>lab_vmp.exe</strong>, protected with <strong>VMProtect 3.9.4</strong>. Every register assignment, constant, and address below belongs to this one generated VM, not to the version as a whole.</p>
+<p>The method is to establish instruction effects, follow state, and verify transfers. Matching the expected printed text is a useful final check; it is not how a VM exit is identified.</p>
+<p>Scope: the source and unprotected build were inspected; the protected function was traced from its entry stub to native code, then continued through the printing routine to its caller. That establishes one executed path, not every handler or path in the protector.</p>
+<p>Protected SHA-256: <code>a0a136fd756eb40c65761168d8936fa460e362ec42be9adde53cfc16e5e11436</code>.</p>
+<p>The trace and script for this write-up are <a href="/downloads/hello_full_trace.txt">hello_full_trace.txt</a> and <a href="/downloads/find_vm_transitions.py">find_vm_transitions.py</a>. Addresses from any other build do not apply here.</p>
+<h2 id="how-to-use-this-article">Reading order</h2>
+<p>Read sections 1–8 first: they establish the native baseline, entry stub, workspace, dispatch, and handler effect for this sample. Sections 9–12 then show how to find and prove the exit. Section 13 replays that verification in IDA and x64dbg; 13A extracts the reusable workflow, and 13B turns this sample into a verification checklist. Sections 14–16 cover capture points, limits, and references.</p>
+<p>The sidebar follows that order. The three interactive labs are marked where they belong: entry, exit, and restoration.</p>
+<p>All short assembly addresses are <strong>hexadecimal RVAs</strong> unless labeled otherwise.</p>
+<p>Three evidence categories: <strong>observed</strong> — recorded in this execution; <strong>derived</strong> — calculated from the instructions and recorded inputs; <strong>unverified</strong> — not established by this trace.</p>
+<p class="vm-stage"><b>Where you are</b> Outside the VM · the original, unprotected function</p>
+<h2 id="1-begin-with-the-actual-program">1. Begin with the actual program</h2>
+<p>The source function is:</p>
+<pre><code class="language-c">EXPORT NOINLINE void vmp_target(void) {
+    printf(&quot;Hello DALI !\n&quot;);
+}
+</code></pre>
+<p>The unprotected compiler output is effectively:</p>
+<pre><code class="language-asm">; RVAs, relative to the executable's image base
+1440  lea rcx, [address_of_string]  ; string at RVA 4000
+1447  jmp puts_thunk               ; thunk at RVA 26C8
+</code></pre>
+<p>The compiler substituted <code>puts</code> for the constant-format <code>printf</code>. <code>puts</code> supplies the newline, so the stored string is <code>Hello DALI !</code> without it. The final <code>jmp</code> is a <strong>tail call</strong>: it transfers to another function without pushing an additional return address. When <code>puts</code> returns, it returns directly to the caller of <code>vmp_target</code>.</p>
+<p>This raises two different questions:</p>
+<ol>
+<li>When does the VM finish interpreting and resume native instructions?</li>
+<li>When does the entire function, including printing, finish?</li>
+</ol>
+<p>They have different answers here. And <code>void</code> means <strong>no defined C return value</strong>: a number in RAX is a physical register value, not automatically a result.</p>
+<p class="vm-stage"><b>Where you are</b> Overview · the whole path at once</p>
+<h2 id="2-overall-execution-flow">2. Overall execution flow</h2>
+<pre><code class="language-text">main calls exported vmp_target
+    -&gt; entry jump and obfuscated entry stub
+    -&gt; save native state and construct VM working state
+    -&gt; decode next bytecode operation and select handler
+    -&gt; execute handler; repeat decoding and dispatch
+    -&gt; exit handler materializes native state
+    -&gt; final RET transfers to the native puts thunk
+    -&gt; thunk JMPs to puts
+    -&gt; puts RETs to main
+</code></pre>
+<p>The VM interprets <strong>bytecode</strong> by dispatching to native x64 <strong>handlers</strong>. The processor still runs native x64; virtualization adds no new instruction set.</p>
+<p>A VM exit here means leaving this software interpreter with a native execution context prepared. It is unrelated to a hardware hypervisor VM exit.</p>
+<p class="vm-stage"><b>Where you are</b> Preliminaries · no code has executed yet</p>
+<h2 id="3-addresses-and-navigation">3. Addresses and navigation</h2>
+<p>The recorded runtime base was <code>0x7FF638E10000</code>. Thus exit-transfer RVA <code>0x21FAA</code> was runtime VA <code>0x7FF638E31FAA</code>. With IDA base <code>0x140000000</code>, it is <code>0x140021FAA</code>. ASLR can change the runtime base next launch; reuse RVAs only for the same binary.</p>
+<p>Do not confuse an RVA with a file offset. Unpacked or generated runtime bytes may have no corresponding file bytes; never subtract the image base and call the result a file offset.</p>
+<h2 id="4-walk-through-the-entry-stub">4. Walk through the entry stub</h2>
+<div id="entry-lab" class="interactive-lab"><div class="lab-heading"><span class="lab-number">01 / ENTRY</span><h3 id="entry-walkthrough" class="lab-title">Entry walkthrough: step through the stub.</h3><p>Select a line or use Next. The highlighted line has just executed.</p></div><div class="lab-controls"><button data-action="back">← Back</button><span class="step-label" aria-live="polite"></span><button data-action="next">Next →</button><button data-action="reset">Reset</button></div><div class="entry-grid"><div class="assembly-list" aria-label="Entry instructions"></div><div class="state-panel"><div class="panel-label">CPU registers</div><div class="registers"></div><div class="transfer-arrow" aria-live="polite"></div><div class="panel-label">STACK MEMORY · 8 BYTES PER ROW</div><div class="stack"></div><p class="stack-caption">Higher addresses ↑ · PUSH moves toward lower addresses.</p></div></div><div class="step-explanation" aria-live="polite"></div><p class="lab-note">Illustrative values: entry_rsp = 0x1000; old RBX = 0x1122334455667788. Instructions and token follow the sample. Discarded stack bytes remain in memory; moving RSP does not erase them.</p><noscript>Enable JavaScript to step through this walkthrough. The full assembly and explanations remain below.</noscript></div>
+<p>The protected export at RVA <code>1440</code> jumps to <code>27FAFC</code>. The executed stub includes:</p>
+<pre><code class="language-asm">push rbx
+pushfq
+mov rbx, 3F8AB3AF09240D32h
+not bl
+mov rbx, 418D6190ECBC5713h
+mov rbx, [rsp+8]
+mov qword ptr [rsp+8], 26D3A714h
+push qword ptr [rsp]
+popfq
+lea rsp, [rsp+8]
+call entry_initializer             ; RVA 1D595
+</code></pre>
+<figure class="shot">
+<a class="shot-link" href="/images/vmp-entry-stub.png" target="_blank" rel="noopener"><img src="/images/vmp-entry-stub.png" alt="IDA view of the vmp_target_0 entry stub at RVA 27FAFC, ending in call loc_14001D595"></a>
+<figcaption>I opened the protected binary in IDA and went to <code>vmp_target_0</code> at RVA <code>27FAFC</code>. This is the exact stub listed above, ending in <code>call loc_14001D595</code> — the initializer.</figcaption>
+</figure>
+<p>Let <strong>entry_rsp</strong> be RSP at the export, before these pushes. <code>[entry_rsp]</code> contains the return address in <code>main</code>.</p>
+<p><code>push rbx</code> subtracts eight from RSP and stores old RBX. <code>pushfq</code> subtracts another eight and stores flags. It does <strong>not</strong> save all registers. Now <code>[rsp]</code> holds flags and <code>[rsp+8]</code> holds old RBX.</p>
+<p>The two constants loaded into RBX do not survive: the second overwrites the first, then <code>mov rbx,[rsp+8]</code> restores the original RBX. <code>not bl</code> changes only RBX's low byte and does not change flags. In this straight-line sequence its result is overwritten before use.</p>
+<p>The next store replaces the saved RBX slot with <code>26D3A714h</code>. <code>push [rsp]</code> duplicates the saved flags; <code>popfq</code> consumes that duplicate. <code>lea rsp,[rsp+8]</code> discards the original flags slot without modifying arithmetic flags.</p>
+<p>Immediately before the call:</p>
+<pre><code class="language-text">RSP = entry_rsp - 8
+[entry_rsp-8] = 26D3A714h
+[entry_rsp]   = caller return address
+RBX and the restorable saved flags have been restored
+</code></pre>
+<p>The call then pushes its own next-instruction address and transfers to the initializer. This is not simply an obfuscated <code>sub rsp,8</code>: it leaves a specific entry token in the allocated slot and then calls another location.</p>
+<p>Single-step the stub and record RSP and the top three stack qwords after each instruction to confirm this.</p>
+<p class="vm-stage"><b>Where you are</b> VM initializer · building the interpreter's working state</p>
+<h2 id="5-initialization-native-registers-become-interpreter-machinery">5. Initialization: native registers become interpreter machinery</h2>
+<p>The initializer begins at RVA <code>1D595</code>. It contains register saves, arithmetic, and calls to the immediately following instruction. Such a <code>call $+5</code> still pushes a return address even though execution continues at the next instruction. Treating it as an ordinary helper call and stepping over it can miss its purpose.</p>
+<p>Important executed instructions include:</p>
+<pre><code class="language-asm">1D5D1  mov rsi, relocation_delta
+1D5E3  lea r10, [rsp+r10*2-48h]
+1D5F2  lea rbp, [r10-230h]
+1D604  and bpl, 0F0h
+; more saves and entry-token calculations
+1D6C4  mov rsp, rbp
+1D6C7  mov rsi, r8
+; more calculations
+1D6F5  sub rsi, rbx
+</code></pre>
+<p>These are selected instructions, not a contiguous replacement for the initializer. Resolve their inputs from the trace before simplifying them. <code>mov rsp,rbp</code> is a <strong>stack pivot</strong>: the stack pointer moves to another prepared location.</p>
+<p>The relocation delta in this run is runtime base minus preferred base. Arithmetic using it can turn preferred-image values into runtime addresses. It is different from the image base itself.</p>
+<p>The reads, writes, and dispatch in this run support these roles:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Register</th>
+<th>Observed role in this interpreter path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R8</td>
+<td>Bytecode cursor, or virtual instruction pointer (VIP)</td>
+</tr>
+<tr>
+<td>R10</td>
+<td>Virtual stack cursor (VSP), also used by restoration</td>
+</tr>
+<tr>
+<td>RSI</td>
+<td>Evolving decoding-key state</td>
+</tr>
+<tr>
+<td>R9</td>
+<td>Handler-address accumulator/dispatch destination</td>
+</tr>
+<tr>
+<td>RSP</td>
+<td>Native stack pointer, also used to address VM context storage</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>RSP is a real stack pointer and can also be a base for virtual-register storage.</strong> Changing RSP does not ask Windows to allocate memory; it selects locations within the available stack, subject to normal commitment/guard behavior.</p>
+<p>The names R8 and R10 are evidence from this build, not universal VMProtect assignments. Identify a role from how values are used, not from a register's name.</p>
+<p class="vm-stage"><b>Where you are</b> VM initializer · workspace and stack setup</p>
+<h3 id="how-the-rbp-setup-differs-from-vmprotect-3-5">How the RBP setup differs from VMProtect 3.5</h3>
+<p>Mitch Zakocs' VMProtect 3.5.0.1274 analysis ends its de-obfuscated stack setup with these instructions (the register saves above them are omitted):</p>
+<pre><code class="language-asm">mov  r10, rsp                     ; r10 = stack pointer before allocation
+sub  rsp, 180h                    ; reserve the VM workspace
+and  rsp, 0FFFFFFFFFFFFFFF0h      ; align the register-space base to 16 bytes
+</code></pre>
+<p>So in 3.5 the workspace base is <code>rsp</code> itself, <code>r10</code> is a snapshot of the stack pointer taken <em>before</em> the subtraction, and the alignment is a full-width <code>and</code> on <code>rsp</code>. Zakocs notes that <code>rsp</code> is the virtual register pointer in every VM he examined. <code>rbp</code> never appears in this setup: it is pushed for save/restore and otherwise acts as a general-purpose register (the first handler moves a popped virtual-stack value through <code>rbp</code>, and other VMs in the same binary use <code>rbp</code> as their virtual instruction pointer or encryption key).</p>
+<p>This 3.9.4 sample builds the same kind of frame through <code>rbp</code> instead:</p>
+<pre><code class="language-asm">1D5E3  lea r10, [rsp+r10*2-48h]   ; derive the base from the native stack
+1D5F2  lea rbp, [r10-230h]        ; compute the workspace base in rbp
+1D604  and bpl, 0F0h              ; align rbp's low byte to 16 bytes
+1D6C4  mov rsp, rbp               ; pivot the native stack onto that base
+</code></pre>
+<p>Resolved against this run's trace, the sequence does the following. The values are from the captured state, not from the mnemonic alone.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Instruction</th>
+<th>Effect in this run</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lea r10, [rsp+r10*2-48h]</code></td>
+<td><code>r10</code> was <code>0</code>, so <code>r10 = rsp - 0x48</code>. The <code>r10*2</code> term is a real input; it disappeared only because <code>r10</code> happened to be zero.</td>
+</tr>
+<tr>
+<td><code>lea rbp, [r10-230h]</code></td>
+<td><code>rbp = r10 - 0x230 = rsp - 0x278</code>. The workspace is not reserved with a <code>sub rsp, imm</code>.</td>
+</tr>
+<tr>
+<td><code>and bpl, 0F0h</code></td>
+<td>Clears the low four bits of <code>rbp</code>, producing a 16-byte boundary. Here <code>rbp</code> was already aligned, so the value did not change.</td>
+</tr>
+<tr>
+<td><code>mov rsp, rbp</code></td>
+<td><code>rsp</code> takes the aligned base; <code>rbp</code> keeps the same value.</td>
+</tr>
+</tbody>
+</table></div>
+<p>The concrete differences from 3.5 are:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Property</th>
+<th>VMProtect 3.5.0.1274 (Zakocs)</th>
+<th>This VMProtect 3.9.4 build</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>How the workspace is reserved</td>
+<td><code>sub rsp, 180h</code></td>
+<td><code>lea rbp, [r10-230h]</code></td>
+</tr>
+<tr>
+<td>Register that becomes the base</td>
+<td><code>rsp</code></td>
+<td><code>rbp</code>, then <code>mov rsp, rbp</code> copies it into <code>rsp</code></td>
+</tr>
+<tr>
+<td>Alignment instruction</td>
+<td><code>and rsp, 0FFFFFFFFFFFFFFF0h</code> (64-bit operand)</td>
+<td><code>and bpl, 0F0h</code> (8-bit operand on <code>rbp</code>)</td>
+</tr>
+<tr>
+<td>Virtual stack pointer</td>
+<td><code>r10</code> = stack pointer <em>before</em> allocation</td>
+<td><code>r10</code> = <code>rsp - 0x48</code>, computed by <code>lea</code></td>
+</tr>
+<tr>
+<td>Base below the entry stack pointer</td>
+<td><code>0x180</code></td>
+<td><code>0x278</code> (<code>0x48</code> to <code>r10</code>, then <code>0x230</code> to <code>rbp</code>)</td>
+</tr>
+<tr>
+<td>Role of <code>rbp</code></td>
+<td>saved scratch / per-VM context register</td>
+<td>the workspace base, still live after the pivot</td>
+</tr>
+</tbody>
+</table></div>
+<p>Two consequences for analysis:</p>
+<ul>
+<li>The classic prologue signature is gone. Searching for <code>sub rsp, imm</code> followed by <code>and rsp, -16</code> will not find this build. The markers here are <code>lea rbp, [r10-imm]</code>, an <code>and</code> on <code>bpl</code>, and <code>mov rsp, rbp</code>.</li>
+<li><code>rbp</code> is no longer a scratch register in the prologue. The initializer writes the base into <code>rbp</code> and leaves it there after the pivot, which is consistent with the restoration path later loading <code>rbp</code> back from the frame.</li>
+</ul>
+<p>Treat the constants as build-specific evidence. Zakocs' comparison table shows the context registers are randomized per VM, and the <code>0x180</code> / <code>0x230</code> sizes and the choice of <code>rbp</code> are exactly what mutation changes between versions. Identify the setup by its data flow, not a fixed byte pattern.</p>
+<p class="vm-stage"><b>Where you are</b> VM initializer (another 3.9.4 sample) · stack setup</p>
+<h3 id="another-3-9-4-sample-the-same-rbp-reload-behind-arithmetic">Another 3.9.4 sample: the same RBP reload hidden behind arithmetic</h3>
+<p>A different sample protected by the same 3.9.4 build opens its entry with a block that looks like dispatch setup but is not. Only the low parts of <code>rbp</code> change, and the result is a stack address:</p>
+<pre><code class="language-asm">push rbp
+pushfq
+mov rbp, 4288C3EF5303A0Fh
+mov ebp, 0A05778Dh
+neg bpl
+shl bpl, 49h
+not bp
+mov rbp, [rsp+rbp*8-502C47F0h]
+mov qword ptr [rsp+8], 7CE19025h
+push qword ptr [rsp+0]
+popfq
+lea rsp, [rsp+8]
+call loc_1400408B6
+</code></pre>
+<div class="shot-pair">
+<figure class="shot">
+<a class="shot-link" href="/images/vmp-entry-stub.png" target="_blank" rel="noopener"><img src="/images/vmp-entry-stub.png" alt="IDA view of the first sample's vmp_target_0 entry stub at RVA 27FAFC"></a>
+<figcaption>First sample — <code>vmp_target_0</code> at RVA <code>27FAFC</code>: RBX takes two constants, then the saved value returns through a plain <code>mov rbx,[rsp+8]</code>.</figcaption>
+</figure>
+<figure class="shot">
+<a class="shot-link" href="/images/vmp-second-sample-entry.png" target="_blank" rel="noopener"><img src="/images/vmp-second-sample-entry.png" alt="IDA view of the second sample's vmp_target entry block at RVA 1440"></a>
+<figcaption>Second sample — <code>vmp_target</code> at RVA <code>1440</code>: RBP's low bytes are computed so that <code>mov rbp,[rsp+rbp*8-502C47F0h]</code> lands on the same saved slot.</figcaption>
+</figure>
+</div>
+<p>Let <code>S</code> be the value of <code>rsp</code> when the block begins. <code>push rbp</code> and <code>pushfq</code> save the original <code>rbp</code> and the flags, so <code>[rsp]</code> holds the saved flags, <code>[rsp+8]</code> holds the original <code>rbp</code>, and <code>[rsp+16]</code> holds the incoming stack top — the return address if the function was entered with a normal <code>call</code>. <code>pushfq</code> saves <strong>RFLAGS only</strong>; it does not save any general-purpose register.</p>
+<p>The two constant loads do not create a handler base. Writing <code>ebp</code> clears the upper 32 bits of <code>rbp</code> on x86-64, so the second instruction discards the first value entirely: <code>rbp = 0x000000000A05778D</code>. The first <code>mov</code> is a dead store.</p>
+<p>The three partial-register operations then compute the low bytes the load needs:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Instruction</th>
+<th>Effect</th>
+<th>Resulting <code>rbp</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>neg bpl</code></td>
+<td>Negates the low byte: <code>0x8D</code> becomes <code>0x73</code></td>
+<td><code>0x0A057773</code></td>
+</tr>
+<tr>
+<td><code>shl bpl, 49h</code></td>
+<td>Count is <code>0x49 &amp; 0x1F = 9</code>; shifting an 8-bit value left 9 places leaves zero</td>
+<td><code>0x0A057700</code></td>
+</tr>
+<tr>
+<td><code>not bp</code></td>
+<td>Flips the low 16 bits: <code>0x7700</code> becomes <code>0x88FF</code></td>
+<td><code>0x0A0588FF</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Substitute that value into the load:</p>
+<pre><code class="language-text">rbp * 8                  = 0x502C47F8
+0x502C47F8 - 0x502C47F0  = 0x8
+mov rbp, [rsp+rbp*8-502C47F0h]  becomes  mov rbp, [rsp+8]
+</code></pre>
+<p>So the arithmetic does not select a handler. It computes the address of the saved <code>rbp</code> and reloads it. Removing any one of those three instructions breaks the address.</p>
+<p>The block then reuses the now-free slot and adjusts the stack so the layout matches a plain adjustment:</p>
+<ul>
+<li><code>mov qword ptr [rsp+8], 7CE19025h</code> overwrites the saved-<code>rbp</code> slot with a constant. This is a stack write, not a data-section write; treat the constant as an encoded VM-entry parameter until the called code proves otherwise.</li>
+<li><code>push qword ptr [rsp+0]</code> followed by <code>popfq</code> restores the saved flags through a copy and leaves <code>rsp</code> unchanged. <code>popfq</code> restores flags, not general-purpose registers.</li>
+<li><code>lea rsp, [rsp+8]</code> moves <code>rsp</code> to <code>S - 8</code> without reading memory and without touching flags, so it points at the constant.</li>
+<li><code>call loc_1400408B6</code> pushes its own return address. At the destination, <code>[rsp]</code> is that return address, <code>[rsp+8]</code> is <code>0x7CE19025</code>, and <code>[rsp+16]</code> is the original incoming stack top.</li>
+</ul>
+<p>The net result is what <code>sub rsp, 8</code> followed by a store and a <code>call</code> would produce, but the subtraction never appears. This is the same lesson as the workspace setup above: the frame is adjusted through pushes, a partial-register address calculation, and <code>lea</code>, so a recognizer that only looks for <code>sub rsp, imm</code> misses it. Whether <code>loc_1400408B6</code> actually initializes the VM still has to be established from the code it reaches.</p>
+<p class="vm-stage"><b>Where you are</b> Dispatcher · decoding and selecting the next operation</p>
+<h2 id="6-decoding-and-dispatch-with-actual-instructions">6. Decoding and dispatch, with actual instructions</h2>
+<p>The first dispatch uses this subsequence:</p>
+<pre><code class="language-asm">1D700  lea r9, [address_at_RVA_1D6F8]
+1D707  lea r8, [rbx+r8-2CA5h]
+1D715  mov r11d, [r8+rbx-2CA1h]
+1D71D  xor r11d, esi
+1D727  dec r11d
+1D734  not r11d
+1D73E  ror r11d, 2
+1D74F  xor r11d, 6D1F0835h
+; key update and interleaved instructions omitted
+1D78A  movsxd r11, r11d
+1D792  add r9, r11
+1D79B  jmp r9
+</code></pre>
+<p>At the relevant addressing operations RBX is <code>2CA1h</code>: the LEA moves R8 back four bytes, and the load reads a dword at R8. XOR combines that dword with key state. DEC subtracts one; NOT flips bits; ROR rotates bits around within a 32-bit word. Arithmetic must be evaluated at the indicated width, wrapping modulo 2^32.</p>
+<p><code>movsxd</code> sign-extends a signed 32-bit displacement into 64 bits. Adding it to the address anchor produces the handler destination. The observed jump lands at RVA <code>20D7F4</code>.</p>
+<div class="warn-note" id="warn-note"><strong>Red note — one <code>jmp r9</code> is not "the dispatcher"</strong>
+<p>I found this by debugging, not by reading. A breakpoint on the <code>jmp r9</code> above hit <strong>once</strong>, and then the whole VM ran to completion and printed its output. The reason is structural: as section 7 states, a handler mixes its virtual operation, dispatch machinery, and obfuscation. The block <code>lea r9,…; add r9,r11; jmp r9</code> is therefore part of <em>every</em> handler, not one central routine. The address above is only the <em>first</em> copy (section 6), and the dispatch that reaches the exit is a different copy (section 11: "the preceding dispatch jumps to <code>21E8F</code>").</p>
+<figure class="shot">
+<a class="shot-link" href="/images/vmp-dispatch-r9.png" target="_blank" rel="noopener"><img src="/images/vmp-dispatch-r9.png" alt="x64dbg stopped on the dispatch jmp r9, with R9 already holding the first handler address"></a>
+<figcaption>1 — x64dbg paused on <code>jmp r9</code>. R9 already holds the destination, RVA <code>20D7F4</code> (x64dbg prints it as <code>vmp_target+20C3B4</code>), so the handler address exists only at runtime. This one copy fired once.</figcaption>
+</figure>
+<figure class="shot">
+<a class="shot-link" href="/images/vmp-first-handler.png" target="_blank" rel="noopener"><img src="/images/vmp-first-handler.png" alt="x64dbg after stepping into the jmp r9, showing the first handler executing"></a>
+<figcaption>2 — after stepping into that <code>jmp r9</code>, execution is inside the first handler. From here each handler ends with its own copy of the same dispatch.</figcaption>
+</figure>
+<p>So do not label a single address "the dispatcher." To catch every dispatch, trace and log the indirect-jump target (R9), or break on each copy — one address only covers the handler that owns it.</p></div>
+<p>This resembles a switch-based interpreter in purpose, but there need not be an obvious opcode-number-to-handler array. Here decoded data contributes to a relative handler address. The decoding state also changes: a decoder that always uses the original key will soon produce incorrect destinations.</p>
+<p>To generalize, work backward from the indirect jump: what produced its destination, what memory supplied the encoded value, and what state transformed it? Keep the destination expression and key-update expression separate.</p>
+<p class="vm-stage"><b>Where you are</b> Handler · executing one virtual operation</p>
+<h2 id="7-the-first-handler-extract-an-effect-not-a-visual-pattern">7. The first handler: extract an effect, not a visual pattern</h2>
+<p>The dispatch lands at RVA <code>20D7F4</code>, a jump to <code>20D7F9</code> that loads the handler constant:</p>
+<pre><code class="language-asm">20D7F4  jmp 20D7F9
+20D7F9  mov edx, 50376A2Dh
+20D7FE  movsx ecx, dl
+20D801  mov rdi, [r10+rdx-50376A2Dh]
+</code></pre>
+<p>Substitution reduces this to <code>mov rdi,[r10]</code>. That establishes a read from the virtual stack; it does not by itself establish that the cursor has advanced.</p>
+<p>It reads an encoded byte near R8 and transforms AL:</p>
+<pre><code class="language-asm">20D809  movzx eax, byte ptr [r8+rcx-2Eh]
+20D80F  xor al, sil
+20D817  add al, 0
+20D81E  not al
+20D820  btr ebp, 1Fh
+20D824  sbb al, 0B1h
+20D829  neg al
+20D82D  xor sil, al
+</code></pre>
+<p>At the byte read RCX is <code>2Dh</code>, so the address is <code>R8-1</code>. The recorded byte is <code>63h</code>; key low byte is <code>4Dh</code>. The decoded values proceed <code>63 XOR 4D = 2E</code>, NOT gives <code>D1</code>, subtracting <code>B1</code> gives <code>20</code>, and NEG gives <code>E0</code>.</p>
+<p>Why does SBB subtract just B1 here? SBB also subtracts the carry flag. The preceding BTR puts the old bit 31 of EBP into carry; EBP is <code>4B95A48Ah</code>, whose bit 31 is zero. This is an example where ignoring an apparently unrelated instruction breaks decoding reasoning.</p>
+<p>Later:</p>
+<pre><code class="language-asm">20D83B  adc rax, rsp
+20D846  mov [rdx+rax-2Dh], rdi
+</code></pre>
+<p>The trace shows RAX becomes <code>RSP+E0h</code>, and RDX is <code>2Dh</code>, so the store writes the previously read value into context slot <code>[context_base+E0h]</code>. This supports a stack-to-context transfer effect. Establish the complete handler boundary and all cursor changes before giving it a complete virtual-opcode name.</p>
+<p>The subsequent dword read and decoding prepare another handler destination. A native handler therefore mixes three concerns: its virtual operation, dispatch machinery, and obfuscation.</p>
+<p class="vm-stage"><b>Where you are</b> Dispatcher and handlers · recovery method</p>
+<h2 id="8-a-reusable-way-to-recover-handlers">8. A reusable way to recover handlers</h2>
+<p>For each executed handler, maintain a ledger of: incoming VIP/VSP/key; memory reads; memory writes; outgoing VIP/VSP/key; and the next destination. Resolve effective addresses using the values at that exact instruction.</p>
+<p>Track <strong>data dependencies</strong>: if a value influences a memory address, a store, a branch, decoding state, or eventual native state, it is relevant. A <strong>backward slice</strong> means tracing those dependencies backward from an effect. Include flags as dependencies: ADC and SBB use carry, conditional jumps use flags, and partial-register writes preserve some bits.</p>
+<p>Only treat an instruction as ignorable after proving its effects are overwritten or irrelevant before use, including flag and memory effects. A trace proves what happened on one path. It does not prove another branch is impossible.</p>
+<p>To reconstruct bytecode more generally, identify instruction operand widths, cursor direction, key evolution, and handler semantics. Explore additional paths with additional traces or symbolic reasoning. This sample's single simple path cannot reveal an entire protector instruction set.</p>
+<p class="vm-stage"><b>Where you are</b> Handler stream · searching for the VM exit</p>
+<h2 id="9-find-the-exit-without-already-knowing-its-address">9. Find the exit without already knowing its address</h2>
+<p>Start x64dbg on the protected executable. Locate <code>vmp_target</code> through the export or use runtime image base plus <code>1440h</code> after checking the file hash. Break there and record:</p>
+<ul>
+<li>Thread identity, image base, and all registers.</li>
+<li>Entry RSP, called entry_rsp, and the qword at <code>[entry_rsp]</code>, called caller_return.</li>
+<li>The memory map containing the code being entered.</li>
+</ul>
+<p>For this run, entry_rsp was <code>94659FFA78h</code> and caller_return was image base plus <code>274Eh</code>. These are observations, not values to copy into another launch.</p>
+<p>Step into the export's jump. The interpreter code traversed here lies in section <code>.VI8</code>, with RVA interval <strong>[14000h,27FDB4h)</strong>. The end is exclusive. In another build obtain actual section bounds and determine which ranges contain VM execution; do not assume the same section name or boundaries.</p>
+<p>Now trace individual instructions until execution leaves the suspected VM range. In x64dbg's command box, the following logs a compact pre-instruction state:</p>
+<pre><code class="language-text">TraceSetLog &quot;{p:cip}|{p:rsp}|{p:rax}|{p:rcx}|{i:cip}&quot;, 1
+TraceSetLogFile &quot;C:\temp\hello_trace.txt&quot;
+ticnd &quot;cip &lt; mod.main()+0x14000 || cip &gt;= mod.main()+0x27FDB4&quot;, .100000
+</code></pre>
+<p>The trace-log file may be overwritten when a new trace starts; use a new filename when preserving an earlier run. Create the output directory first. Start this trace <strong>after</strong> entering the VM section; otherwise the condition is already true at the export. <code>.100000</code> means decimal 100000 instructions. Stop if tracing reaches its limit; a limit stop is not evidence of an exit. Existing breakpoints or exceptions can also interrupt tracing.</p>
+<p>At the stop, verify that the text log includes a final row for the current destination instruction. If it does not, append a row containing the current RIP/RSP/RAX/RCX and instruction using the same format, or compare the last logged instruction with the paused state manually. A boundary detector needs both sides of the transition.</p>
+<p>This condition discovers <strong>candidates</strong>. Leaving a section could be a helper call, exception path, or another interpreter component. Conversely, native code may reside inside that same section. A range test reduces the search; it does not prove the interpretation has finished.</p>
+<p>Use an uninterrupted trace of the same thread. Do not concatenate separate runs, filtered-out instruction sequences, or different threads and interpret adjacent rows as consecutive execution.</p>
+<p class="vm-stage"><b>Where you are</b> Analysis tooling · no execution</p>
+<h2 id="10-small-script-to-list-those-candidates">10. Small script to list those candidates</h2>
+<p>The script below reads either the compact format above or the 14-column full trace. It uses only the specified ranges and consecutive executed addresses; it has no embedded exit RVA or expected Hello DALI output.</p>
+<p>The complete script is <a href="/downloads/find_vm_transitions.py"><code>find_vm_transitions.py</code></a>:</p>
+<pre><code class="language-python">"""Find executed VM-range departures, not automatically verified VM exits.
+
+Input is an uninterrupted, single-thread x64dbg pre-instruction text trace.
+Accepts RIP|RSP|RAX|RCX|instruction, or the article's 14-column full trace.
+All trace numbers are hexadecimal. Ranges are half-open RVAs.
+"""
+import argparse
+import json
+from pathlib import Path
+
+
+def records(path):
+    short = ('rip', 'rsp', 'rax', 'rcx')
+    full = ('rip', 'rsp', 'rbp', 'rbx', 'rdi', 'r8', 'r9', 'r10',
+            'r11', 'rax', 'rcx', 'rdx', 'rsi')
+    for line_number, line in enumerate(Path(path).read_text(encoding='utf-8-sig').splitlines(), 1):
+        if not line.strip():
+            continue
+        fields = line.split('|')
+        names = short if len(fields) == 5 else full if len(fields) == 14 else None
+        if names is None:
+            raise ValueError(f'Line {line_number}: expected 5 or 14 columns')
+        try:
+            state = dict(zip(names, (int(s.strip(), 16) for s in fields[:-1])))
+        except ValueError as exc:
+            raise ValueError(f'Line {line_number}: invalid hexadecimal register') from exc
+        yield state, fields[-1].strip(), line_number
+
+
+def find(path, base, ranges):
+    def inside(va):
+        return any(lo &lt;= va - base &lt; hi for lo, hi in ranges)
+    previous = None
+    for current in records(path):
+        if previous and inside(previous[0]['rip']) and not inside(current[0]['rip']):
+            before, instruction, line = previous
+            after = current[0]
+            yield {
+                'classification': 'range departure; manual verification required',
+                'source_line': line,
+                'transfer_va': hex(before['rip']),
+                'transfer_rva': hex(before['rip'] - base),
+                'instruction': instruction,
+                'destination_va': hex(after['rip']),
+                'destination_minus_main_base': hex(after['rip'] - base),
+                'rsp_delta': after['rsp'] - before['rsp'],
+                'destination_registers': {k: hex(v) for k, v in after.items()},
+            }
+        previous = current
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('trace')
+    parser.add_argument('--base', required=True, type=lambda s: int(s, 0))
+    parser.add_argument('--vm-range', required=True, action='append', metavar='0xSTART:0xEND')
+    args = parser.parse_args()
+    ranges = [tuple(int(v, 0) for v in s.split(':')) for s in args.vm_range]
+    if any(len(r) != 2 or r[0] &lt; 0 or r[0] &gt;= r[1] for r in ranges):
+        parser.error('Each range must contain increasing, nonnegative START:END RVAs')
+    print(json.dumps(list(find(args.trace, args.base, ranges)), indent=2))
+
+
+if __name__ == '__main__':
+    main()
+</code></pre>
+<p>Run it on the <a href="/downloads/hello_full_trace.txt">full trace</a>:</p>
+<pre><code class="language-powershell">python .\find_vm_transitions.py .\hello_full_trace.txt --base 0x7FF638E10000 --vm-range 0x14000:0x27FDB4
+</code></pre>
+<p>The full trace has these columns:</p>
+<pre><code class="language-text">RIP|RSP|RBP|RBX|RDI|R8|R9|R10|R11|RAX|RCX|RDX|RSI|instruction
+</code></pre>
+<p>Each row records the state <strong>before</strong> its instruction executes. Read the following row to see its effects. The final row records arrival at the thunk, before the thunk executes. The compact logging command in section 9 records only RIP, RSP, RAX, and RCX: that is enough for the range-departure helper, but not enough to reproduce every restoration calculation. Inspect missing registers live or use the full format below for a new trace:</p>
+<pre><code class="language-text">TraceSetLog &quot;{p:cip}|{p:rsp}|{p:rbp}|{p:rbx}|{p:rdi}|{p:r8}|{p:r9}|{p:r10}|{p:r11}|{p:rax}|{p:rcx}|{p:rdx}|{p:rsi}|{i:cip}&quot;, 1
+</code></pre>
+<p>Even this full format omits R12–R15, flags, vector registers, and memory contents. The instructions reveal restoration sources for those general registers, but inspect them live to verify their loaded values.</p>
+<p>Run from the outputs directory, or supply full paths. For a new trace, replace the base with that run's image base. Repeat <code>--vm-range</code> when several ranges jointly describe your candidate VM area.</p>
+<p>For this trace the output is:</p>
+<pre><code class="language-json">[
+  {
+    "classification": "range departure; manual verification required",
+    "source_line": 2731,
+    "transfer_va": "0x7ff638e31faa",
+    "transfer_rva": "0x21faa",
+    "instruction": "ret",
+    "destination_va": "0x7ff638e126c8",
+    "destination_minus_main_base": "0x26c8",
+    "rsp_delta": 8,
+    "destination_registers": {
+      "rip": "0x7ff638e126c8",
+      "rsp": "0x94659ffa78",
+      "rbp": "0x2396f7a13c0",
+      "rbx": "0x7ff638e17040",
+      "rdi": "0x2396f7a1360",
+      "r8": "0x2396f7a4680",
+      "r9": "0xa4760011",
+      "r10": "0x1",
+      "r11": "0x2396f7a140e",
+      "rax": "0x1",
+      "rcx": "0x7ff638e14000",
+      "rdx": "0x2396f7a13c0",
+      "rsi": "0x7ff638e17048"
+    }
+  }
+]
+</code></pre>
+<p>The <code>destination_minus_main_base</code> field is only a real main-module RVA if the destination is actually inside that module. For library destinations resolve the owning module separately.</p>
+<p>The script deliberately labels the result as requiring manual verification. It cannot infer a register-restoration sequence, guarantee the given ranges represent a VM, discover unexecuted exits, or determine a C return type from these columns.</p>
+<p class="vm-stage"><b>Where you are</b> VM exit · the restoration handler</p>
+<h2 id="11-prove-this-candidate-is-a-vm-exit">11. Prove this candidate is a VM exit</h2>
+<p>Follow the trace backward from <code>21FAA</code>. The preceding dispatch jumps to <code>21E8F</code>, where this restoration sequence begins:</p>
+<pre><code class="language-asm">21E8F  mov eax, 4032A1A7h
+21E94  mov rsp, r10
+21E97  pop rbx
+21E98  call next_instruction
+21E9D  mov r8, [rsp+rax-4032A19Fh]
+; further loads reconstruct native register state
+</code></pre>
+<p>At the pivot, RSP changes from VM workspace <code>94659FF7C0h</code> to frame base <strong>frame_base = 94659FF9F0h</strong>. POP RBX advances it by eight; CALL-next pushes a code address and moves it back to frame_base. At the shown R8 load, the index expression is <code>4032A1A7h-4032A19Fh = 8</code>, so it reads <code>[frame_base+8]</code>.</p>
+<p>Do not demand a clean run of POP instructions. This exit uses indexed MOV loads, temporary stack movement, and interleaved arithmetic.</p>
+<p>Later, with RCX=<code>FFA7h</code>:</p>
+<pre><code class="language-asm">21F63  mov rcx, [rsp+rcx*4-3FE44h]
+</code></pre>
+<p>The offset reduces to <code>58h</code>; this reconstructs native RCX from <code>[frame_base+58h]</code>. It becomes the string pointer at image base plus <code>4000h</code>, the argument required by native <code>puts</code> under the Windows x64 calling convention.</p>
+<p>The tail includes:</p>
+<pre><code class="language-asm">21F73  push qword ptr [rsp+60h]
+21F77  popfq
+; flag-preserving instructions and further register restoration
+21F8B  mov r14, [rsp+rdx-FF3Eh]
+21F93  mov rdi, [rsp+rdx-FF36h]
+21F9B  not edx
+21F9D  mov rdx, [rsp+78h]
+21FA2  lea rsp, [rsp+80h]
+21FAA  ret
+</code></pre>
+<p>With RDX=<code>FFA6h</code> at the relevant indexed loads, R14 comes from <code>[frame_base+68h]</code> and RDI from <code>[frame_base+70h]</code>. The final LEA sets RSP to frame_base+80h = entry_rsp-8. RET consumes a qword destination and increments RSP by eight, leaving RSP=entry_rsp at native continuation.</p>
+<figure class="shot">
+<a class="shot-link" href="/images/vmp-final-transfer.png" target="_blank" rel="noopener"><img src="/images/vmp-final-transfer.png" alt="x64dbg paused on the RET at RVA 21FAA; RCX points to the Hello DALI string and the qword at [rsp] holds RVA 26C8"></a>
+<figcaption>I set a breakpoint at runtime base plus <code>21FAA</code> and paused on the RET. RCX already points to the string, and the qword at <code>[rsp]</code> holds the native destination, RVA <code>26C8</code> — the restored state the exit hands to native code, captured before the transfer executes.</figcaption>
+</figure>
+<p>The chain: a VM dispatch reaches this block, the block pivots away from VM workspace and reconstructs native state, its final transfer reaches ordinary native code, and the stack suits that continuation. Together these establish the exit on this path — a RET alone would not.</p>
+<div id="exit-lab" class="interactive-lab"><div class="lab-heading"><span class="lab-number">02 / EXIT</span><h3 id="exit-boundary-walkthrough" class="lab-title">Exit walkthrough: follow the two boundaries.</h3><p>Follow the actual sequence in this sample, one boundary at a time.</p></div><div class="exit-stages" role="group" aria-label="Exit stages"><button data-exit="0">1 · Before RET</button><span>→</span><button data-exit="1">2 · Native continuation</button><span>→</span><button data-exit="2">3 · Back in main</button></div><div class="exit-view" aria-live="polite"></div><p class="lab-note">The first transition executes one RET. The second runs the thunk and puts before returning to main; it is not a single instruction step.</p></div><p class="vm-stage"><b>Where you are</b> Address map · handler, transfer, continuations</p>
+<h2 id="12-address-map-handler-transfer-and-continuations">12. Address map: handler, transfer, and continuations</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Meaning</th>
+<th style="text-align: right;">RVA in this binary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Exit handler entry reached by dispatch</td>
+<td style="text-align: right;"><code>21E8F</code></td>
+</tr>
+<tr>
+<td>Stack pivot within that handler</td>
+<td style="text-align: right;"><code>21E94</code></td>
+</tr>
+<tr>
+<td>Final transfer instruction, RET</td>
+<td style="text-align: right;"><code>21FAA</code></td>
+</tr>
+<tr>
+<td>First native continuation instruction, puts thunk</td>
+<td style="text-align: right;"><code>26C8</code></td>
+</tr>
+<tr>
+<td>Original caller continuation after puts finishes</td>
+<td style="text-align: right;"><code>274E</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>The thunk at <code>26C8</code> is <code>jmp qword ptr [image_base+9260h]</code>; the slot supplies the imported puts address.</p>
+<p>An exit handler is a block or path of code. Its final transfer is one instruction. The continuation is the instruction reached by that transfer. A function return is another semantic boundary and can occur later, as it does here.</p>
+<p><strong>Caller versus callee:</strong> <code>main</code> is the caller of <code>vmp_target</code>; <code>puts</code> is the callee reached by its tail call. A <em>continuation</em> is simply where execution proceeds next. The puts thunk is the native continuation after the VM exit; the instruction in main is the caller continuation after the whole invocation finishes. Reaching puts alone does not establish a VM exit: the preceding restoration and transfer are the evidence.</p>
+<p class="vm-stage"><b>Where you are</b> Verification · reproducing the trace by hand</p>
+<h2 id="13-reproduce-verification-manually-in-ida-and-x64dbg">13. Reproduce verification manually in IDA and x64dbg</h2>
+<p>In IDA, use Jump to address with <code>image_base+21E8F</code>, then inspect through <code>image_base+21FAA</code>. IDA's preferred-base address for the RET is <code>140021FAAh</code>. If bytes are shown as data, create instructions only at destinations justified by the executed trace; linear disassembly of arbitrary bytes is unreliable.</p>
+<p>For a fresh execution, break at the export and save entry_rsp and caller_return again. Add a breakpoint at runtime base plus <code>21FAA</code>, then run. Before executing RET:</p>
+<ol>
+<li>Confirm RSP is entry_rsp-8 for this path.</li>
+<li>Follow <code>[rsp]</code> as a qword in the dump; it must point to runtime base plus <code>26C8</code>.</li>
+<li>Inspect restored registers. Follow RCX in the dump to inspect the actual native argument.</li>
+<li>Step into RET once. RIP must be the destination read from <code>[rsp]</code>, and RSP must increase by eight.</li>
+<li>At <code>26C8</code>, confirm <code>[rsp]</code> is still caller_return. Follow the indirect jump target to verify the imported routine.</li>
+</ol>
+<p>Then break at <strong>caller_return</strong>, the return address recorded at the export, and run through puts. At caller_return, inspect registers <strong>before executing the caller's first instruction</strong>. In this build that instruction is <code>xor eax,eax</code>, which would immediately overwrite the library's result.</p>
+<p>This replay verifies the discovered address; the range trace was the discovery method. Both are part of the evidence — a saved breakpoint on its own is not.</p>
+<p class="vm-stage"><b>Where you are</b> Manual method · applies to any protected binary</p>
+<h2 id="13a-general-manual-method-use-this-on-another-protected-binary">13A. General manual method: use this on another protected binary</h2>
+<p>Keep the sample addresses in section 12 as a worked example. On another binary, discover the corresponding locations using the steps below. <strong>VMProtect 3.9.4 does not imply one fixed exit signature, register assignment, or section layout.</strong> This is an investigation method, not a guarantee that every binary yields to one breakpoint or search.</p>
+<h3 id="step-1-identify-the-target-function">Step 1 — Identify the target function</h3>
+<p>In IDA, start with its export if one exists. Otherwise find a caller, a relevant string reference, or another known program operation and work toward the function implementing it. An export may point to a forwarding stub, so follow the instructions rather than assuming the export is the interpreter itself.</p>
+<p>Press <strong>G</strong> to navigate to an address, and <strong>X</strong> to inspect an address or operand's cross-references. An indirect jump may have no useful static cross-reference because its destination is calculated at runtime. <a href="https://docs.hex-rays.com/getting-started/basic-usage">IDA navigation reference</a>.</p>
+<p>Example: this sample exports <code>vmp_target</code> at RVA <code>1440</code>, which jumps to RVA <code>27FAFC</code>. Those are two locations with different purposes: the function's public entry and its entry stub.</p>
+<p>If packing hides the real instructions on disk, pause after they have become executable at runtime and inspect those live bytes. An IDA database opened from the original file may not show the same instructions as the running process. Resolve that difference before trusting a static listing.</p>
+<h3 id="step-2-stop-at-the-function-entry-and-make-a-baseline">Step 2 — Stop at the function entry and make a baseline</h3>
+<p>In x64dbg, resolve the executable's current base in the memory map or module view. Add the function RVA to that base. Set a breakpoint at the resulting address and run until this invocation reaches it.</p>
+<p>For this sample, the command is:</p>
+<pre><code class="language-text">bp mod.main()+0x1440
+</code></pre>
+<p>For a different executable, replace <code>0x1440</code> with its discovered function RVA. For a DLL, use that DLL's base instead of the main executable's base. <a href="https://help.x64dbg.com/en/latest/commands/breakpoint-control/SetBPX.html">x64dbg breakpoint reference</a>.</p>
+<p>Before stepping, write down the current thread, register values, and RSP. Call this initial RSP <strong>entry_rsp</strong>. Inspect the eight-byte value at <code>[entry_rsp]</code>. For an ordinary function entered by CALL, it is the caller's continuation address; call it <strong>caller_return</strong>. Confirm caller_return points to plausible caller code after the call. Do not apply that assumption blindly to a program entry point, exception entry, or internal region reached by a jump.</p>
+<p>This baseline supports two separate questions later: whether a usable native context was recovered, and whether this function invocation finished. It does not imply every exit register must equal its entry value: the function can change its result, arguments for a native call, and other allowed state.</p>
+<p>Example: this sample's C has RVA <code>274E</code>. Its numeric VA changes with the runtime image base. The stack addresses change between runs too.</p>
+<h3 id="step-3-follow-entry-into-the-interpreter">Step 3 — Follow entry into the interpreter</h3>
+<p>Use <strong>Step Into</strong>, one instruction at a time, while examining entry. x64dbg also exposes this as the <code>sti</code> command. <a href="https://help.x64dbg.com/en/latest/commands/debug-control/StepInto.html">Step Into reference</a>.</p>
+<p>Look for a combination of register saves, a stack/workspace setup, reads from encoded instruction data, and repeated calculated transfers to blocks implementing operations. No single PUSH or indirect JMP proves virtualization.</p>
+<p>Do not use “run until return” as your discovery method. Obfuscated code can use RET as an internal jump, and CALL/RET as stack operations. Step-over can likewise skip details you need, particularly CALL-next sequences.</p>
+<p>Example: the entry eventually prepares R8 as a bytecode cursor, R10 as a virtual stack cursor, and RSI as decoding state. In another build the same roles may use other registers or memory slots. Keep provisional labels until repeated behavior supports them.</p>
+<h3 id="step-4-choose-a-way-to-locate-a-possible-transition">Step 4 — Choose a way to locate a possible transition</h3>
+<p>The question is: <strong>where does this interpreter prepare machine state for ordinary native execution?</strong> You can approach it in two ways.</p>
+<p><strong>Execution-first approach:</strong> trace from the protected entry, preserving every executed instruction in the thread. If interpreter execution occupies identifiable ranges, use a range-departure condition as in section 9 to stop at a candidate. Obtain the ranges from the actual code and memory map. A section boundary is a convenient filter, not the definition of a VM boundary.</p>
+<p>Example: the range filter finds the transition from <code>21FAA</code> to <code>26C8</code>. It does not use the string or the expected console output.</p>
+<p>If the interpreter and native code share a section, the filter can miss the exit. Instead, look in the trace for a cluster of loads that reconstruct registers, a switch from VM workspace to a continuation stack, and a transfer into normal native work. You can also pause at a known native routine reached by the target and read the already-recorded path into it; scrolling backward in disassembly cannot recover instructions that were never recorded.</p>
+<p><strong>IDA-first approach:</strong> inspect possible restoration blocks in the disassembly. Search for combinations such as RSP being assigned from another register, loads into several native registers from a common frame, restoration of flags, and a final indirect transfer. Look beyond clean POP sequences: indexed MOV instructions may implement the same effect. Treat these as candidates and set execution breakpoints to determine whether your target reaches them.</p>
+<p>Searching all RET instructions is usually too broad. Searching only <code>popfq; ret</code> is usually too narrow. Xrefs may reveal callers of a block, but missing xrefs do not prove it is unreachable. For this reason, IDA-only analysis often stops at a candidate when destinations or memory contents are determined at runtime.</p>
+<h3 id="step-5-inspect-the-instructions-before-the-candidate-transfer">Step 5 — Inspect the instructions before the candidate transfer</h3>
+<p>Work backward in the recorded execution path and identify which instructions supplied the final register values and stack pointer. “Backward” means earlier executed instructions, not necessarily lower addresses.</p>
+<p>For each memory load, calculate the effective address using the register values at that instruction. Ask whether several loads retrieve values from one saved or VM-produced context. Watch for registers loaded temporarily and overwritten again: only the final live values matter at the transfer.</p>
+<p>Example:</p>
+<pre><code class="language-asm">; at RVA 21E9D in this sample
+mov r8, [rsp+rax-4032A19Fh]
+</code></pre>
+<p>With RAX=<code>4032A1A7h</code>, this reads <code>[rsp+8]</code>. It is a straightforward context load hidden behind an index expression. The presence of the large constant is not the important feature; the resolved memory access is.</p>
+<p>The register values may represent the state after virtual instructions have changed it. “Restoration” therefore means materializing the native state required by the continuation, not necessarily restoring every original entry value.</p>
+<h3 id="step-6-prove-what-the-final-transfer-does">Step 6 — Prove what the final transfer does</h3>
+<p>Place a breakpoint on the candidate's last transfer and inspect it before executing it.</p>
+<p>For a plain <strong>RET</strong>, read the qword at <code>[rsp]</code>. That is the destination it will consume. Step once and check that RIP becomes that value and RSP increases by eight. A <code>ret imm16</code> additionally adjusts RSP by its immediate amount.</p>
+<p>For <strong>JMP register</strong>, read that register and step once. For <strong>JMP [memory]</strong>, read the destination pointer from the specified memory location.</p>
+<p>For <strong>CALL</strong>, account for the extra return address it pushes. It may be a native helper called by the interpreter rather than an exit. Follow what happens when the helper returns before classifying the transition.</p>
+<p>Example: before the RET at RVA <code>21FAA</code>, RSP=entry_rsp-8 and <code>[rsp]</code> points to RVA <code>26C8</code>. After stepping, RIP is the thunk and RSP=entry_rsp. This describes exactly how the VM hands control to native code.</p>
+<p>Do not assume every protector transition must end in RET. If exceptions or other unusual transfers are involved, follow their actual context changes rather than forcing the RET model onto them.</p>
+<h3 id="step-7-verify-the-destinations-meaning">Step 7 — Verify the destination's meaning</h3>
+<p>At the destination, inspect the next instructions, their arguments, and the stack. Do they consume a coherent native calling context? Has interpreter dispatch stopped? Does execution later re-enter the interpreter?</p>
+<p>A native helper call made while the VM's working context remains active is different from a transition that materializes the protected program's native state. A verified exit can also be temporary: the program may execute native instructions and later enter another virtualized region. Neither observation alone proves the entire function is finished.</p>
+<p>Example: the destination at RVA <code>26C8</code> forwards to puts. RCX holds its string argument; <code>[rsp]</code> holds the original caller continuation. The VM has finished this region, but puts has not yet printed anything at the moment of capture.</p>
+<h3 id="step-8-capture-the-right-state">Step 8 — Capture the right state</h3>
+<p>To capture <strong>post-VM native state</strong>, stop at the verified continuation before its first instruction executes. Record the registers and relevant memory there. For this sample that is RVA <code>26C8</code>.</p>
+<p>To capture <strong>the function's return</strong>, use the caller continuation caller_return recorded at entry, and inspect state before the caller changes it. Verify that it is the same invocation and thread. Recursion and repeated calls can reach the same address many times, so an address-only breakpoint may need a thread/stack condition or manual invocation tracking.</p>
+<p>Example: caller_return is RVA <code>274E</code>; its first instruction clears EAX. Read the register before executing that instruction. This function is void, so the value is not a defined C return value even though a library result happens to be visible.</p>
+<p>For other functions, use the signature and calling convention to decide where a return value resides. RAX is not a universal return-value container.</p>
+<h3 id="step-9-move-the-verified-finding-back-into-ida">Step 9 — Move the verified finding back into IDA</h3>
+<p>Compute <code>RVA = runtime address - owning module's runtime base</code>. Navigate to <code>IDA image base + RVA</code> with G. For the final transfer, <code>0x140000000 + 0x21FAA = 0x140021FAA</code>.</p>
+<p>Comment three separate locations: the restoration handler, the final transfer, and the native continuation. Record the binary hash and how you verified the path. This makes the analysis reproducible and avoids naming the whole handler, its RET, and its destination all “vmexit” without distinction.</p>
+<p>If you use IDA's debugger instead of x64dbg, the same experiment applies: select an appropriate debugger, launch the target, resolve loaded-module addresses, break at the target entry, inspect registers/stack, step through the candidate transfer, and verify its destination. Static IDA views alone cannot display live register values. Account for any database rebasing when switching between static and runtime addresses.</p>
+<h3 id="what-counts-as-a-convincing-explanation">What counts as a convincing explanation?</h3>
+<p>A convincing explanation shows: “This path belongs to the interpreter. These instructions prepare the native registers and stack. This instruction transfers to this destination. The destination consumes that state as native code. Here is where the function later returns, if that is a separate event.”</p>
+<p>That explanation transfers between binaries. The sample RVAs are concrete examples, while the evidence chain is what carries over to another VMProtect build.</p>
+<div id="address-lab" class="interactive-lab"><div class="lab-heading"><span class="lab-number">03 / RESTORATION</span><h3 id="restoration-address-walkthrough" class="lab-title">Restoration walkthrough: resolve the address first.</h3><p>Choose a real load from the exit. Substitute the live inputs to see which frame slot it reads.</p></div><div class="address-choices"><button data-load="0">Restore R8</button><button data-load="1">Restore RBP</button><button data-load="2">Restore RCX</button></div><div class="address-view" aria-live="polite"></div></div><p class="vm-stage"><b>Where you are</b> VM exit · the restoration handler in this sample</p>
+<h2 id="13b-this-sample-expected-observations-at-the-exit">13B. This sample: expected observations at the exit</h2>
+<p>Use these observations to verify a matching run of <code>lab_vmp.exe</code>. Absolute pointers and incoming register values can differ in your run. The RVAs and instruction effects apply to the file hash stated at the beginning.</p>
+<h3 id="first-clarify-all-virtual-registers-returned-to-real-registers">First, clarify “all virtual registers returned to real registers”</h3>
+<p>A VM can have more memory slots than the CPU has registers. Some slots represent native registers, some hold intermediate values, and others contain interpreter bookkeeping. There is no general one-to-one copy of all virtual registers to hardware registers.</p>
+<p>The exit <strong>materializes the native context required at the continuation</strong>. Here, loads can be identified for all fifteen general-purpose registers other than RSP, an RSP adjustment, and a flags restoration; RET establishes RIP. That claim is about this sequence only — it does not cover XMM registers or all architectural state, nor prove every restored value equals the original entry value.</p>
+<h3 id="check-a-entering-the-restoration-handler">Check A — Entering the restoration handler</h3>
+<p>Break at runtime base plus <code>21E8F</code>. The next instructions should be:</p>
+<pre><code class="language-asm">mov eax, 4032A1A7h
+mov rsp, r10
+pop rbx
+call next_instruction
+</code></pre>
+<p>At the MOV into RSP, note the old RSP and the value in R10. Step it once: RSP should now equal that previous R10 value. Call this new stack-frame base <strong>frame_base</strong>. This is the frame from which native state is reconstructed.</p>
+<p>In the recorded execution:</p>
+<pre><code class="language-text">VM workspace RSP = 94659FF7C0h
+frame_base                 = 94659FF9F0h
+entry entry_rsp           = 94659FFA78h
+frame_base                 = entry_rsp - 88h
+</code></pre>
+<p>Use your own entry_rsp and frame_base. Seeing this pivot is one piece of evidence, not sufficient proof by itself.</p>
+<h3 id="check-b-account-for-the-native-register-loads">Check B — Account for the native register loads</h3>
+<p>The following table expresses each final restoration source relative to frame_base. It incorporates temporary pushes/pops: do not assume the current RSP equals frame_base at every instruction.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Native state</th>
+<th>Source in this executed restoration</th>
+<th style="text-align: right;">Instruction RVA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RBX</td>
+<td><code>[frame_base+00h]</code>, consumed by POP before this slot is reused</td>
+<td style="text-align: right;"><code>21E97</code></td>
+</tr>
+<tr>
+<td>R8</td>
+<td><code>[frame_base+08h]</code></td>
+<td style="text-align: right;"><code>21E9D</code></td>
+</tr>
+<tr>
+<td>R11</td>
+<td><code>[frame_base+10h]</code>, before the slot is overwritten</td>
+<td style="text-align: right;"><code>21EB7</code></td>
+</tr>
+<tr>
+<td>R9</td>
+<td><code>[frame_base+18h]</code></td>
+<td style="text-align: right;"><code>21EBF</code></td>
+</tr>
+<tr>
+<td>RAX</td>
+<td><code>[frame_base+20h]</code></td>
+<td style="text-align: right;"><code>21EDB</code></td>
+</tr>
+<tr>
+<td>R12</td>
+<td><code>[frame_base+28h]</code>, before the slot is overwritten</td>
+<td style="text-align: right;"><code>21EF4</code></td>
+</tr>
+<tr>
+<td>R13</td>
+<td><code>[frame_base+30h]</code></td>
+<td style="text-align: right;"><code>21F04</code></td>
+</tr>
+<tr>
+<td>RBP</td>
+<td><code>[frame_base+38h]</code>, with current RSP=frame_base+8</td>
+<td style="text-align: right;"><code>21F16</code></td>
+</tr>
+<tr>
+<td>R10</td>
+<td><code>[frame_base+40h]</code></td>
+<td style="text-align: right;"><code>21F29</code></td>
+</tr>
+<tr>
+<td>RSI</td>
+<td><code>[frame_base+48h]</code></td>
+<td style="text-align: right;"><code>21F35</code></td>
+</tr>
+<tr>
+<td>R15</td>
+<td><code>[frame_base+50h]</code></td>
+<td style="text-align: right;"><code>21F4C</code></td>
+</tr>
+<tr>
+<td>RCX</td>
+<td><code>[frame_base+58h]</code></td>
+<td style="text-align: right;"><code>21F63</code></td>
+</tr>
+<tr>
+<td>Flags</td>
+<td>value pushed from <code>[frame_base+60h]</code>, then consumed by POPFQ</td>
+<td style="text-align: right;"><code>21F73</code>, <code>21F77</code></td>
+</tr>
+<tr>
+<td>R14</td>
+<td><code>[frame_base+68h]</code></td>
+<td style="text-align: right;"><code>21F8B</code></td>
+</tr>
+<tr>
+<td>RDI</td>
+<td><code>[frame_base+70h]</code></td>
+<td style="text-align: right;"><code>21F93</code></td>
+</tr>
+<tr>
+<td>RDX</td>
+<td><code>[frame_base+78h]</code></td>
+<td style="text-align: right;"><code>21F9D</code></td>
+</tr>
+<tr>
+<td>RSP before RET</td>
+<td>calculated as frame_base+80h</td>
+<td style="text-align: right;"><code>21FA2</code></td>
+</tr>
+<tr>
+<td>RIP after RET</td>
+<td>qword consumed from <code>[frame_base+80h]</code></td>
+<td style="text-align: right;"><code>21FAA</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>To verify a row, break before its instruction, evaluate the memory operand, record the qword there, step once, and compare the destination register. Then follow later instructions to make sure they do not replace that register again before the transfer.</p>
+<p>For example, the instruction at <code>21F16</code> uses <code>[rsp+rcx*4-3FE68h]</code>. At this point RSP=frame_base+8 and RCX=FFA6h. The index contributes 30h, so the total source is frame_base+38h. This is why tracking the live stack pointer matters.</p>
+<p>Some frame slots are overwritten after their values have been loaded. Inspecting the frame only at the final RET cannot recover every original restoration source. Record each load when it executes, or record the frame before those writes.</p>
+<p>POPFQ restores flags subject to architectural privilege restrictions; it does not blindly replace every RFLAGS bit. Debugger trap-related bits also require care. The instructions after this POPFQ in the shown tail do not modify arithmetic flags. This text trace does not log RFLAGS, so use the debugger's flags display to verify those bits explicitly.</p>
+<h3 id="check-c-stop-before-the-final-ret">Check C — Stop before the final RET</h3>
+<p>At runtime base plus <code>21FAA</code>, RET has not executed yet. For this path, the state is:</p>
+<pre><code class="language-text">RSP       = frame_base + 80h = entry_rsp - 8
+[RSP]     = runtime image base + 26C8h
+[RSP + 8] = caller_return, the original caller continuation
+RCX       = runtime image base + 4000h
+</code></pre>
+<p>Follow RCX in the dump: it points to the null-terminated bytes <code>Hello DALI !</code>. That is the native puts argument. Do not use the string alone to classify an exit; the restoration and transfer evidence explain why that argument is now meaningful.</p>
+<p>In the recorded run RAX was 1 here. <strong>Do not require RAX=1 in every run</strong>: this path restores a saved value, and the function has no defined integer return. For this build's path, compare its restored RAX with the value actually loaded from <code>[frame_base+20h]</code>.</p>
+<h3 id="check-d-execute-the-ret-once">Check D — Execute the RET once</h3>
+<p>After one Step Into:</p>
+<pre><code class="language-text">RIP = runtime image base + 26C8h
+RSP = entry_rsp
+[RSP] = caller_return
+</code></pre>
+<p>The instruction now waiting to execute is an indirect JMP through the puts import slot at RVA <code>9260</code>. RET itself did not change the other general-purpose registers. This is the clean capture point for the post-VM native context: native puts has not run yet.</p>
+<p>If RIP differs, inspect the qword you recorded before RET. If RSP differs, inspect whether you stopped at the same transfer and followed the same path. Do not change register values to make them match the example; investigate the mismatch.</p>
+<h3 id="check-e-distinguish-vm-completion-from-function-completion">Check E — Distinguish VM completion from function completion</h3>
+<p>Run to caller_return, recorded at function entry. In this build caller_return is RVA <code>274E</code>. At that stop, puts has returned, and RSP should be entry_rsp+8 on this normal path. The waiting caller instruction is <code>xor eax,eax</code>.</p>
+<p>Capture before that XOR to inspect the raw library result. The recorded result was RAX=0, but <code>vmp_target</code> is void, and another successful puts implementation need not return exactly zero.</p>
+<p>The boundary is now accounted for: the loads above reconstruct native register state, RET transfers to the puts thunk with the original caller address still on the stack, and puts later returns to that caller. This verifies the observed region's exit without claiming that every VM temporary, machine-state component, or path has been recovered.</p>
+<p class="vm-stage"><b>Where you are</b> VM exit boundary · capturing state</p>
+<h2 id="14-exactly-where-to-capture-registers-and-the-result">14. Exactly where to capture registers and the result</h2>
+<p>For the state after the virtualized region, capture at the first native continuation <strong>before its instruction executes</strong>. Here that is RVA <code>26C8</code>. Capturing at the final RET gives restored general registers but the pre-transfer RSP and RIP. Capturing after RET gives the continuation's actual RSP/RIP too.</p>
+<p>In the recorded run, at <code>26C8</code>:</p>
+<pre><code class="language-text">RSP = entry_rsp
+RCX = image_base + 4000h
+RAX = 1
+</code></pre>
+<p>RAX=1 here is not the result of printing: puts has not run. At the caller continuation <code>274E</code>, after puts finished, raw RAX was 0 in this execution. That is an observed implementation result, not a promised value for every CRT. puts indicates success with a nonnegative result; it does not promise the character count.</p>
+<p>Because <code>vmp_target</code> is void, neither capture is a defined return value of <code>vmp_target</code>. For a variant with a defined integer result, change the source to <code>int vmp_target(void) { return puts("Hello DALI !"); }</code>, rebuild, reprotect, and repeat discovery. Its code layout may change.</p>
+<h3 id="return-values-after-the-exit">Return values after the exit</h3>
+<p><strong>Only when that exit has already established the final integer result.</strong> A VM exit that resumes more native computation may occur before the result is ready. Break at the caller continuation to inspect the final result of a normally returning function, before the caller overwrites it.</p>
+<p>For a Windows x64 function returning a 32-bit <code>int</code>, interpret EAX. Do not assign meaning to unused upper bits merely because the debugger displays the whole RAX. The calling convention specifies return locations and which registers a callee must preserve. <a href="https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170">Microsoft x64 calling convention</a>.</p>
+<p><strong>Restored state is not necessarily entry state.</strong> At an internal VM exit, registers must contain what the protected code needs at that continuation. At a normal function return, nonvolatile registers must satisfy the calling convention; volatile registers can have changed. Comparing every register with entry and demanding equality would reject valid exits. In this sample RCX deliberately becomes the puts argument.</p>
+<p>For other targets, identify the function's signature and ABI first. Integer results commonly use RAX/EAX; floating-point results use XMM0; some aggregate returns use caller-provided memory. This trace logs selected general registers, not XMM state, all flags, or memory writes. A full capture needs the relevant additional state. Debugger stepping can also affect how trap-related flag bits appear.</p>
+<p class="vm-stage"><b>Where you are</b> Detection · analysis rules and their limits</p>
+<h2 id="15-detection-rules-and-their-limits">15. Detection rules and their limits</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Observation</th>
+<th>Useful inference</th>
+<th>Failure case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Execution leaves known VM ranges</td>
+<td>Investigate this transfer</td>
+<td>Native helper, another VM section, exception path</td>
+</tr>
+<tr>
+<td>Many native registers loaded from a frame</td>
+<td>Possible context restoration</td>
+<td>Ordinary epilogue or context-switch code</td>
+</tr>
+<tr>
+<td>RSP pivots from VM workspace</td>
+<td>Possible restoration phase</td>
+<td>Internal VM stack management</td>
+</tr>
+<tr>
+<td>POPFQ near restoration</td>
+<td>Flags being materialized</td>
+<td>Entry code or unrelated flag management</td>
+</tr>
+<tr>
+<td>Final RET/JMP reaches native code with coherent stack/arguments</td>
+<td>Stronger exit evidence</td>
+<td>A temporary native excursion may return to VM</td>
+</tr>
+<tr>
+<td>Original caller continuation is reached</td>
+<td>This invocation finished on that path</td>
+<td>Does not locate the earlier VM boundary</td>
+</tr>
+</tbody>
+</table></div>
+<p>Do not hardcode a register order, a section name, a POP count, or one terminal opcode as a universal signature. The strongest reusable rule is semantic: trace a transition out of interpretation, demonstrate how native state was prepared, and verify what consumes that state.</p>
+<p>Static analysis can decode available bytes, examine exports/imports, propagate constants, and propose control-flow and restoration candidates. Execution resolves this run's indirect destinations, decrypted bytes, register-dependent addresses, and actual stack state. Packing makes runtime observation particularly useful, but execution is still path-limited.</p>
+<p>For this exact file, one exit to a native tail-call continuation was verified. This does not establish every possible exit, a complete bytecode grammar, all exception behavior, or all VMProtect 3.9.4 variants. New builds require new evidence even when the source is unchanged.</p>
+<p class="vm-stage"><b>Where you are</b> Applying the method · all stages</p>
+<h2 id="16-applying-the-method-to-another-binary">16. References and next steps</h2>
+<p>Use section 13A as the workflow when starting another protected binary. The sample addresses and expected output are evidence from this file, not assumptions to carry into the next build.</p>
+<h3 id="references-for-reproducing-the-workflow">References for reproducing the workflow</h3>
+<ul>
+<li><a href="https://help.x64dbg.com/en/latest/commands/tracing/TraceSetLog.html">x64dbg TraceSetLog</a>: text logging and log conditions.</li>
+<li><a href="https://help.x64dbg.com/en/latest/commands/tracing/TraceSetLogFile.html">x64dbg TraceSetLogFile</a>: log-file selection.</li>
+<li><a href="https://help.x64dbg.com/en/latest/commands/tracing/TraceIntoConditional.html">x64dbg TraceIntoConditional</a>: conditional instruction tracing.</li>
+<li><a href="https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/puts-putws?view=msvc-170">Microsoft puts reference</a>: newline and return-value semantics.</li>
+<li><a href="https://www.mitchellzakocs.com/blog/vmprotect3">Mitch Zakocs, VMProtect 3: Virtualization-Based Software Obfuscation Pt. 2</a>: VMProtect 3.5.0.1274 architecture and initialization used in the RBP comparison above.</li>
+</ul>

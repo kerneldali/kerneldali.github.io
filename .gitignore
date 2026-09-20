@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Generated site and standalone export
+public/
+VMProtect_Study_Guide.html
+
+# Hexo runtime database and logs
+db.json
+*.log
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials/
+secrets/
+private/
+*credentials*
+*secret*
+
+# AI-generated drafts and working notes
+**/[Aa][Ii]*.md
+**/*-[Aa][Ii]*.md
+**/*_[Aa][Ii]*.md
+**/*.[Aa][Ii].md
+**/[Cc]hat[Gg][Pp][Tt]*.md
+**/[Cc]laude*.md
+**/[Cc]opilot*.md

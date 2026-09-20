@@ -1,0 +1,171 @@
+<div class="post-layout">
+    <div class="post-toc" id="post-toc">
+        <div class="toc-label">
+            <div><strong>Contents</strong><small>Current section follows as you scroll</small></div>
+            <a href="javascript:;" id="post-toc-close">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" height="16" width="16">
+                    <path d="M193.94 256L296.5 153.44l21.15-21.15c3.12-3.12 3.12-8.19 0-11.31l-22.63-22.63c-3.12-3.12-8.19-3.12-11.31 0L160 222.06 36.29 98.34c-3.12-3.12-8.19-3.12-11.31 0L2.34 120.97c-3.12 3.12-3.12 8.19 0 11.31L126.06 256 2.34 379.71c-3.12 3.12-3.12 8.19 0 11.31l22.63 22.63c3.12 3.12 8.19 3.12 11.31 0L160 289.94 262.56 392.5l21.15 21.15c3.12 3.12 8.19 3.12 11.31 0l22.63-22.63c3.12-3.12 3.12-8.19 0-11.31L193.94 256z" fill="currentColor" />
+                </svg>
+            </a>
+        </div>
+        <%- toc(page.content, { class: 'toc', list_number: false, max_depth: 4, min_depth: 2 }) || 'No headings' %>
+    </div>
+    <div class="post-container">
+        <div class="post-detail gt-bg-theme-color-second gt-c-content-color-first">
+            <article class="gt-post-content">
+                <h1 class="post-title"><%= page.title ? page.title : '(Untitled)' %></h1>
+                <div class="post-info">
+                    <time class="post-time gt-c-content-color-first">· <%- date(page.date, 'YYYY-MM-DD') %> ·</time>
+                    <span class="post-wordcount gt-c-content-color-second"><%= symbolsTime(page) %></span>
+                    <% if (page.tags && page.tags.length) { %>
+                        <% page.tags.forEach(function(tag) { %>
+                            <a href="<%= url_for(tag.path) %>" class="post-tag">#<%= tag.name %></a>
+                        <% }); %>
+                    <% } %>
+                    <button type="button" id="contents-toggle" class="contents-toggle" aria-expanded="false">Contents</button>
+                </div>
+                <hr>
+                <div class="post-content gt-c-content-color-first">
+                    <%- page.content %>
+                </div>
+            </article>
+        </div>
+        <br>
+        <% if (page.next || page.prev) { %>
+            <div class="next-prev-post">
+                <% if (page.prev) { %>
+                    <div class="prev-post">
+                        <div class="prev gt-c-content-color-first">
+                            Newer: <a href="<%- url_for(page.prev.path) %>"
+                                class="post-title gt-a-link"><%- page.prev.title %></a>
+                        </div>
+                    </div>
+                <% } %>
+                <% if (page.next) { %>
+                    <div class="next-post">
+                        <div class="next gt-c-content-color-first">
+                            Older: <a href="<%- url_for(page.next.path) %>"
+                                class="post-title gt-a-link"><%- page.next.title %></a>
+                        </div>
+                    </div>
+                <% } %>
+            </div>
+        <% } %>
+        <%- partial("_includes/disqus.ejs") %>
+        <%- partial("_includes/gitalk") %>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var tocBtn = document.getElementById('contents-toggle');
+    var postToc = document.getElementById('post-toc');
+    var tocClose = document.getElementById('post-toc-close');
+    if (tocBtn && postToc && tocClose) {
+        tocBtn.addEventListener('click', function () {
+            postToc.classList.toggle('active');
+            tocBtn.setAttribute('aria-expanded', String(postToc.classList.contains('active')));
+        });
+        tocClose.addEventListener('click', function () {
+            postToc.classList.remove('active');
+        });
+        Array.from(document.getElementsByClassName('toc-link')).forEach(function (el) {
+            el.addEventListener('click', function () {
+                postToc.classList.remove('active');
+            });
+        });
+    }
+
+    var toc = postToc && postToc.querySelector('.toc');
+    var content = document.querySelector('.post-content');
+    if (!toc || !content) return;
+
+    var topItems = Array.from(toc.children).filter(function (item) {
+        return item.classList.contains('toc-level-2');
+    });
+    var groups = [
+        { label: 'ORIENTATION', test: function (id) { return id === 'how-to-use-this-article'; } },
+        { label: 'SAMPLE WALKTHROUGH', test: function (id) { return /^(1|2|3|4|5)-/.test(id); } },
+        { label: 'INTERPRETER', test: function (id) { return /^(6|7|8)-/.test(id); } },
+        { label: 'EXIT EVIDENCE', test: function (id) { return /^(9|10|11|12|13)-/.test(id); } },
+        { label: 'REUSE AND LIMITS', test: function (id) { return /^(13a|13b|14|15|16)-/.test(id); } }
+    ];
+    var previousGroup = null;
+    topItems.forEach(function (item) {
+        var link = item.querySelector(':scope > .toc-link');
+        var id = link ? link.getAttribute('href').slice(1) : '';
+        var group = groups.find(function (candidate) { return candidate.test(id); });
+        if (group && group.label !== previousGroup) {
+            var marker = document.createElement('li');
+            marker.className = 'toc-group';
+            marker.setAttribute('aria-hidden', 'true');
+            marker.textContent = group.label;
+            toc.insertBefore(marker, item);
+            previousGroup = group.label;
+        }
+    });
+
+    var headings = Array.from(content.querySelectorAll('h2[id], h3[id]'));
+    var links = Array.from(toc.querySelectorAll('.toc-link'));
+    var linkById = {};
+    links.forEach(function (link) {
+        linkById[link.getAttribute('href').slice(1)] = link;
+    });
+
+    function keepLinkVisible(link) {
+        if (!link || window.innerWidth < 1200) return;
+        var tocRect = toc.getBoundingClientRect();
+        var linkRect = link.getBoundingClientRect();
+        if (linkRect.top < tocRect.top + 42) {
+            toc.scrollTop -= tocRect.top + 42 - linkRect.top;
+        } else if (linkRect.bottom > tocRect.bottom - 12) {
+            toc.scrollTop += linkRect.bottom - tocRect.bottom + 12;
+        }
+    }
+
+    function updateActiveHeading() {
+        if (!headings.length) return;
+        var marker = window.scrollY + (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--navbar-height'), 10) || 96) + 34;
+        var current = headings[0];
+        headings.forEach(function (heading) {
+            if (heading.getBoundingClientRect().top + window.scrollY <= marker) current = heading;
+        });
+
+        links.forEach(function (link) {
+            link.classList.remove('is-active', 'is-parent-active');
+            link.removeAttribute('aria-current');
+            var item = link.closest('.toc-item');
+            if (item) item.classList.remove('is-active', 'is-parent-active');
+        });
+
+        var activeLink = linkById[current.id];
+        if (!activeLink) return;
+        activeLink.classList.add('is-active');
+        activeLink.setAttribute('aria-current', 'location');
+        var activeItem = activeLink.closest('.toc-item');
+        if (activeItem) activeItem.classList.add('is-active');
+
+        var parentHeading = current.tagName === 'H3' ? headings.slice(0, headings.indexOf(current) + 1).reverse().find(function (heading) { return heading.tagName === 'H2'; }) : current;
+        var parentLink = parentHeading && linkById[parentHeading.id];
+        if (parentLink && parentLink !== activeLink) {
+            parentLink.classList.add('is-parent-active');
+            var parentItem = parentLink.closest('.toc-item');
+            if (parentItem) parentItem.classList.add('is-parent-active');
+        }
+        keepLinkVisible(activeLink);
+    }
+
+    var ticking = false;
+    function requestActiveUpdate() {
+        if (ticking) return;
+        ticking = true;
+        window.requestAnimationFrame(function () {
+            ticking = false;
+            updateActiveHeading();
+        });
+    }
+    window.addEventListener('scroll', requestActiveUpdate, { passive: true });
+    window.addEventListener('resize', requestActiveUpdate);
+    updateActiveHeading();
+});
+</script>

@@ -1,0 +1,65 @@
+# Pure theme configuration
+# Theme: https://github.com/renbaoshuo/hexo-theme-pure
+
+# Branding
+favicon: /images/dali-logo.png
+avatar: /images/dali-logo.png
+logo: /images/dali-logo.png
+
+# Strings cycled by the navbar typing effect
+typed:
+  - SOC / Defensive Security
+  - Reverse Engineering
+  - Networking
+  - Web Security
+  - Cloud Security
+  - Systems Security
+  - Notes and Write-ups
+
+# Navigation. `icon` keys map to inline SVGs in layout/_includes/navbar.ejs.
+menus:
+  - name: Home
+    link: /
+    icon: home
+  - name: About
+    link: /about/
+    icon: user
+  - name: Archives
+    link: /archives/
+    icon: archive
+  - name: Tags
+    link: /tags/
+    icon: tags
+
+katex: false
+force_https: true
+check_update: false
+
+post:
+  feature: false
+
+# Footer left-hand text
+footer: '© 2026 Dali'
+
+disqus:
+  enable: false
+  shortname: ''
+  api: ''
+  apikey: ''
+  admin: ''
+gitalk:
+  enable: false
+  clientId: ''
+  clientSecret: ''
+  repository: ''
+  owner: ''
+valine:
+  enable: false
+  appId: ''
+  appKey: ''
+  placeholder: ''
+  pageSize: 10
+web_analytics:
+  enable: false
+  google: ''
+  baidu: ''

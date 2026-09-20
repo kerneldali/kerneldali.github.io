@@ -1,0 +1,27 @@
+{
+  "name": "dalis-blog",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dali's blog. Built with Hexo and the Pure theme.",
+  "scripts": {
+    "clean": "hexo clean",
+    "build": "hexo clean && hexo generate",
+    "server": "hexo server",
+    "dev": "hexo server",
+    "export": "node bundle.cjs",
+    "deploy": "hexo clean && hexo generate"
+  },
+  "dependencies": {
+    "hexo": "^8.1.2",
+    "hexo-generator-archive": "^2.0.0",
+    "hexo-generator-index": "^4.0.0",
+    "hexo-generator-tag": "^2.0.0",
+    "hexo-renderer-ejs": "^2.0.0",
+    "hexo-renderer-less": "^4.0.0",
+    "hexo-renderer-marked": "^7.0.1",
+    "hexo-server": "^3.0.0"
+  },
+  "hexo": {
+    "version": "8.1.2"
+  }
+}

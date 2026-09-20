@@ -1,0 +1,10 @@
+<div class="tags-container">
+    <% if (site.tags.length) { %>
+        <% site.tags.forEach(function (tag) { %>
+            <a class="tag gt-c-content-color-first gt-a-link"
+                href="<%- url_for(tag.path) %>">#<%= tag.name %></a>
+        <% }); %>
+    <% } else { %>
+        <p class="gt-c-content-color-second">No tags yet.</p>
+    <% } %>
+</div>

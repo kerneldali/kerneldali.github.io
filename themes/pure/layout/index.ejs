@@ -1,0 +1,25 @@
+<div class="post-list-container">
+    <div class="post-inner" aria-label="Posts">
+        <h1 class="post-list-title gt-c-content-color-first">Posts</h1>
+        <% if (page.posts && page.posts.length) { %>
+            <% page.posts.forEach(function(post) { %>
+                <article class="post-row">
+                    <time class="post-row-date gt-c-content-color-second"><%- date(post.date, 'YYYY-MM-DD') %></time>
+                    <span class="post-row-separator" aria-hidden="true">—</span>
+                    <a href="<%- url_for(post.path) %>" class="post-row-title gt-c-content-color-first"><%= post.title || '(Untitled)' %></a>
+                </article>
+            <% }); %>
+        <% } else { %>
+            <p class="gt-c-content-color-second">No posts yet. Add one under <code>source/_posts/</code>.</p>
+        <% } %>
+    </div>
+</div>
+
+<div class="pagination-container">
+    <% if (page.prev) { %>
+        <a href="<%- url_for(page.prev_link) %>" class="prev-page gt-a-link">Newer</a>
+    <% } %>
+    <% if (page.next) { %>
+        <a href="<%- url_for(page.next_link) %>" class="next-page gt-a-link">Older</a>
+    <% } %>
+</div>

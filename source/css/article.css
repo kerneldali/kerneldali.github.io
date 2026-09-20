@@ -1,0 +1,799 @@
+/* Integrate the VMProtect study content with the standard neon post card. */
+
+/* Adopt the site's cyan and violet palette for the article's widgets. */
+html {
+    --accent-first: #79ceeb;
+    --accent-second: rgba(121, 206, 235, 0.16);
+    --lab-bg: #f3f8fb;
+    --code-ink: #243641;
+}
+
+html[data-mode="dark"] {
+    --theme-first: #0f1418;
+    --theme-second: #161d23;
+    --content-first: #eaf1f0;
+    --content-second: #8fa3a3;
+    --border: #26333a;
+    --content-code: #131a1f;
+    --accent-first: #79ceeb;
+    --accent-second: rgba(121, 206, 235, 0.16);
+    --lab-bg: #171722;
+    --code-ink: #d8e5f3;
+}
+
+/* Undo the study stylesheet's page-level layout. */
+.main-content {
+    max-width: none !important;
+    width: auto !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Open Sans', sans-serif !important;
+    font-size: 16px !important;
+    line-height: 1.725 !important;
+    letter-spacing: 1.0382px !important;
+}
+
+/* Restore the standard post card chrome. */
+.post-detail {
+    padding: 24px 32px !important;
+    background: var(--theme-second) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(121, 206, 235, 0.08) !important;
+    overflow: hidden !important;
+    position: relative !important;
+}
+
+.post-detail::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent-first), var(--accent-blue), var(--accent-purple));
+}
+
+/* Page atmosphere (also overrides the study stylesheet's gradient). */
+.main {
+    background: radial-gradient(ellipse 900px 520px at 12% -8%, rgba(121, 206, 235, 0.1), transparent 62%),
+        radial-gradient(ellipse 720px 520px at 100% 0%, rgba(139, 124, 246, 0.1), transparent 58%),
+        var(--theme-first) !important;
+}
+
+html {
+    scrollbar-color: var(--accent-first) var(--theme-first) !important;
+}
+
+.post-title {
+    display: block !important;
+}
+
+.post-info {
+    display: block !important;
+}
+
+.gt-post-content > hr {
+    display: block !important;
+}
+
+.post-content {
+    font-family: inherit !important;
+    font-size: 16px !important;
+    letter-spacing: 1.0382px !important;
+}
+
+.post-content p {
+    margin: 0 0 18px !important;
+    line-height: 1.725 !important;
+    letter-spacing: 1.0382px !important;
+}
+
+/* The article's hero sits inside the card. */
+.study-intro {
+    padding-top: 8px !important;
+}
+
+/* Headings come from the theme; only reset the study stylesheet's oversized
+   margins (the theme heading rule does not set margin). */
+.post-content h2 {
+    margin: 36px 0 18px !important;
+}
+
+.post-content h3 {
+    margin: 28px 0 14px !important;
+}
+
+/* Keep the hero and in-widget headings as designed. */
+.post-content .study-intro h1,
+#study-hero {
+    display: block !important;
+    font-size: 64px !important;
+    letter-spacing: -0.05em !important;
+    line-height: 1.08 !important;
+    background: none !important;
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 23px 0 !important;
+}
+
+.post-container .post-detail .post-content .lab-heading h3,
+.post-container .post-detail .post-content .lab-heading .lab-title,
+.post-container .post-detail .post-content .exit-view h4 {
+    display: block !important;
+    background: none !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    letter-spacing: -0.02em !important;
+}
+
+.post-container .post-detail .post-content .lab-heading h3,
+.post-container .post-detail .post-content .lab-heading .lab-title {
+    font-size: 26px !important;
+    margin: 10px 0 !important;
+}
+
+.post-container .post-detail .post-content .exit-view h4 {
+    font-size: 18px !important;
+    margin: 0 0 12px !important;
+}
+
+@media (max-width: 760px) {
+    #study-hero,
+    .post-content .study-intro h1 {
+        font-size: 44px !important;
+    }
+
+    .post-container .post-detail .post-content h2 {
+        font-size: 21px !important;
+    }
+
+    .post-container .post-detail .post-content h3 {
+        font-size: 18px !important;
+    }
+}
+
+/* Hero dateline and the trace path strip (no base styles in study.css). */
+.post-content .article-dateline {
+    margin: 0 0 8px !important;
+    font: 600 11px/1.5 'Roboto Mono', Consolas, monospace !important;
+    letter-spacing: 0.14em !important;
+    text-transform: uppercase;
+    color: var(--content-second);
+}
+
+.post-content .article-dateline span {
+    color: var(--accent-first);
+    margin: 0 7px;
+}
+
+.post-content .trace-strip {
+    margin: 22px 0 20px;
+    padding: 15px 18px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--theme-first);
+}
+
+.post-content .trace-caption {
+    display: block;
+    margin-bottom: 11px;
+    font: 600 10px/1.6 'Roboto Mono', Consolas, monospace !important;
+    letter-spacing: 0.16em !important;
+    text-transform: uppercase;
+    color: var(--accent-first);
+}
+
+.post-content .trace-caption small {
+    display: block;
+    margin-top: 2px;
+    font-weight: 400;
+    letter-spacing: 0.06em !important;
+    text-transform: none;
+    color: var(--content-second);
+}
+
+.post-content .trace-strip > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.post-content .trace-strip > div > a {
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--theme-second);
+    color: var(--content-first) !important;
+    font: 600 13px/1.5 'Roboto Mono', Consolas, monospace !important;
+    letter-spacing: 0 !important;
+    text-decoration: none !important;
+}
+
+.post-content .trace-strip > div > a:hover {
+    border-color: var(--accent-first);
+}
+
+.post-content .trace-strip > div > a small {
+    display: block;
+    font: 500 9px/1.5 'Roboto Mono', Consolas, monospace;
+    letter-spacing: 0.1em !important;
+    text-transform: uppercase;
+    color: var(--content-second);
+}
+
+.post-content .trace-strip > div > span {
+    color: var(--accent-purple);
+    font-weight: 700;
+}
+
+/* Recolor the study widgets that ship hardcoded purple accents. */
+.interactive-lab {
+    border-top: 2px solid var(--accent-first) !important;
+}
+
+.notation-key {
+    border-left-color: var(--accent-first) !important;
+}
+
+.asm-row.active,
+.explorer-line.selected {
+    border-color: var(--accent-first) !important;
+}
+
+.reg.changed {
+    box-shadow: inset 3px 0 var(--accent-first) !important;
+}
+
+.stack-row.pointed {
+    border-left-color: var(--accent-first) !important;
+}
+
+.lab-number,
+.effect-flow strong,
+.inline-arrow,
+.transfer-arrow {
+    color: var(--accent-first) !important;
+}
+
+.explorer-bar {
+    color: var(--content-second) !important;
+    background: var(--lab-bg) !important;
+}
+
+.post-content pre {
+    border-left: 3px solid var(--accent-purple) !important;
+}
+
+.post-content a:hover {
+    color: var(--accent-first) !important;
+}
+
+.post-toc .toc-label {
+    border-bottom: 1px solid var(--border) !important;
+}
+
+.post-toc .toc-label > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.post-toc .toc-label strong {
+    color: var(--content-first);
+    font: 800 14px/1.2 'Open Sans', 'Segoe UI', sans-serif;
+    letter-spacing: 0.02em;
+}
+
+.post-toc .toc-label small {
+    color: var(--content-second);
+    font: 500 9px/1.4 'Roboto Mono', Consolas, monospace;
+    letter-spacing: 0.03em;
+}
+
+.post-toc .toc-group {
+    margin: 18px 0 6px;
+    padding: 0 8px;
+    color: var(--accent-first);
+    font: 700 9px/1.4 'Roboto Mono', Consolas, monospace;
+    letter-spacing: 0.16em;
+}
+
+.post-toc .toc-group:first-child {
+    margin-top: 8px;
+}
+
+.post-toc .toc .toc-item > .toc-link {
+    position: relative;
+    min-height: 30px;
+    padding: 7px 9px !important;
+    border: 1px solid transparent;
+    color: var(--content-second) !important;
+    font: 500 11px/1.45 'Segoe UI', sans-serif;
+}
+
+.post-toc .toc > .toc-item > .toc-link {
+    color: var(--content-first) !important;
+    font-weight: 700;
+}
+
+.post-toc .toc .toc-child {
+    margin: 3px 0 5px 11px;
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
+}
+
+.post-toc .toc .toc-child .toc-link {
+    font-size: 10px;
+}
+
+.post-toc .toc .toc-link:hover,
+.post-toc .toc .toc-link.is-parent-active {
+    color: var(--content-first) !important;
+    background: rgba(121, 206, 235, 0.06);
+}
+
+.post-toc .toc .toc-link.is-active {
+    border-color: rgba(121, 206, 235, 0.28);
+    background: var(--accent-second);
+    color: var(--accent-first) !important;
+    box-shadow: inset 3px 0 var(--accent-first);
+}
+
+.post-toc .toc .toc-item.is-parent-active > .toc-link {
+    border-bottom-color: rgba(121, 206, 235, 0.18);
+}
+
+/* "Where you are" stage marker shown above each section heading. */
+.post-content .vm-stage {
+    margin: 26px 0 2px !important;
+    padding: 7px 12px !important;
+    border-left: 3px solid var(--accent-first) !important;
+    border-radius: 0 6px 6px 0 !important;
+    background: var(--theme-first) !important;
+    font: 600 11px/1.6 'Roboto Mono', Consolas, monospace !important;
+    letter-spacing: 0.04em !important;
+    color: var(--content-second) !important;
+}
+
+.post-content .vm-stage b {
+    display: inline-block;
+    margin-right: 8px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    background: var(--accent-second);
+    color: var(--accent-first);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+/* Layout constants shared by the post grid and the navbar gutter. */
+:root {
+    --layout-width: 1308px;
+    --layout-gutter: 24px;
+}
+
+/* Anchor jumps clear the sticky navbar. */
+html {
+    scroll-padding-top: calc(var(--navbar-height) + 16px);
+}
+
+/* Move the contents panel into a left sidebar on wide screens. */
+.post-layout {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: calc(var(--layout-width) + var(--layout-gutter) * 2);
+    margin: 0 auto;
+    padding: 0 var(--layout-gutter);
+    align-self: center;
+}
+
+.post-layout .post-container {
+    width: 100%;
+    min-width: 0;
+}
+
+.post-layout .post-detail {
+    width: 100% !important;
+    max-width: 1000px;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+@media (min-width: 1200px) {
+    .post-layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1000px);
+        gap: 28px;
+        align-items: start;
+    }
+
+    /* Keep the navbar brand/buttons on the same gutter as the grid. */
+    .navbar {
+        padding-left: max(var(--layout-gutter), calc((100% - var(--layout-width)) / 2)) !important;
+        padding-right: max(var(--layout-gutter), calc((100% - var(--layout-width)) / 2)) !important;
+    }
+
+    .post-layout .post-detail {
+        max-width: none;
+    }
+
+    .post-layout .post-toc {
+        display: flex !important;
+        flex-direction: column;
+        position: sticky !important;
+        top: calc(var(--navbar-height) + 16px);
+        left: auto !important;
+        right: auto !important;
+        bottom: auto !important;
+        margin: 0 !important;
+        width: auto !important;
+        max-height: calc(100vh - var(--navbar-height) - 40px);
+        padding: 20px !important;
+        overflow: hidden;
+    }
+
+    .post-layout .post-toc .toc-label {
+        flex: 0 0 auto;
+    }
+
+    .post-layout .post-toc .toc-label > div {
+        min-width: 0;
+    }
+
+    .post-layout .post-toc .toc {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    .post-layout .post-toc .toc::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .post-layout .post-toc .toc::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .post-layout .post-toc .toc::-webkit-scrollbar-thumb {
+        background: var(--accent-first);
+        border: 2px solid var(--theme-first);
+        border-radius: 8px;
+    }
+
+    .post-layout .post-toc .toc::-webkit-scrollbar-button {
+        display: none;
+        width: 0;
+        height: 0;
+    }
+
+    .post-layout .post-toc .toc-label a {
+        display: none !important;
+    }
+
+    .contents-toggle {
+        display: none !important;
+    }
+}
+
+/* Red note callout for corrections noticed during debugging. */
+.post-content .warn-note {
+    margin: 24px 0 !important;
+    padding: 16px 18px !important;
+    border: 1px solid rgba(255, 95, 86, 0.35) !important;
+    border-left: 4px solid #ff5f56 !important;
+    border-radius: 8px !important;
+    background: rgba(255, 95, 86, 0.07) !important;
+}
+
+.post-content .warn-note > strong:first-child {
+    display: block;
+    margin-bottom: 8px;
+    color: #ff8a80 !important;
+    font: 700 12px/1.6 'Roboto Mono', Consolas, monospace !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase;
+}
+
+.post-content .warn-note p {
+    margin: 0 0 10px !important;
+}
+
+.post-content .warn-note p:last-child {
+    margin-bottom: 0 !important;
+}
+
+/* Terminal-style code blocks: a quiet header, readable mono text, and a real
+   scroll surface instead of a button floating inside the code. */
+.post-content pre {
+    position: relative;
+    margin: 26px 0 22px !important;
+    padding: 42px 0 0 !important;
+    border: 1px solid var(--border) !important;
+    border-left: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    background: #101720 !important;
+    box-shadow: 0 12px 26px rgba(6, 12, 20, 0.2);
+    overflow: hidden !important;
+}
+
+.post-content pre::before {
+    content: 'SOURCE';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 42px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    color: #8092a5;
+    background: #151f2a;
+    border-bottom: 1px solid #263746;
+    font: 700 10px/1 'Roboto Mono', Consolas, monospace;
+    letter-spacing: 0.14em;
+}
+
+.post-content pre > .copy-code {
+    position: absolute;
+    z-index: 1;
+    top: 8px;
+    right: 10px;
+    float: none;
+    display: inline-flex !important;
+    align-items: center;
+    min-height: 25px;
+    padding: 4px 9px !important;
+    border: 1px solid #38516a !important;
+    border-radius: 5px !important;
+    background: #1b2a39 !important;
+    color: #b8cde0 !important;
+    font: 600 10px/1.2 'Roboto Mono', Consolas, monospace !important;
+    letter-spacing: 0.04em;
+}
+
+.post-content pre > .copy-code:hover {
+    border-color: var(--accent-first) !important;
+    background: #223a4c !important;
+    color: #e5f6ff !important;
+    transform: none;
+}
+
+.post-content pre > code {
+    display: block;
+    width: auto !important;
+    max-width: none;
+    margin: 0 !important;
+    padding: 18px 20px 20px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: #d8e5f3 !important;
+    font: 500 13px/1.72 'Roboto Mono', Consolas, Menlo, monospace !important;
+    letter-spacing: 0 !important;
+    white-space: pre;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+}
+
+/* Interactive labs use the same visual language, but keep their controls and
+   state panels visually distinct from ordinary prose. */
+.post-content .interactive-lab {
+    margin: 34px 0 30px !important;
+    padding: 0 !important;
+    border: 1px solid var(--border) !important;
+    border-top: 3px solid var(--accent-first) !important;
+    border-radius: 12px !important;
+    background: linear-gradient(145deg, rgba(121, 206, 235, 0.05), transparent 42%), var(--theme-second) !important;
+    box-shadow: 0 14px 30px rgba(6, 12, 20, 0.18) !important;
+    overflow: hidden;
+}
+
+.post-content .interactive-lab .lab-heading {
+    padding: 22px 24px 18px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(15, 23, 32, 0.24);
+}
+
+.post-content .interactive-lab .lab-number {
+    display: block;
+    color: var(--accent-first) !important;
+    font: 700 10px/1.4 'Roboto Mono', Consolas, monospace;
+    letter-spacing: 0.16em;
+}
+
+.post-content .interactive-lab .lab-heading h3 {
+    margin: 7px 0 5px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    font-size: 22px !important;
+    line-height: 1.3 !important;
+}
+
+.post-content .interactive-lab .lab-heading p {
+    margin: 0 !important;
+    color: var(--content-second);
+    font-size: 13px !important;
+    line-height: 1.6 !important;
+}
+
+.post-content .interactive-lab .lab-controls,
+.post-content .interactive-lab .exit-stages,
+.post-content .interactive-lab .address-choices {
+    margin: 0 !important;
+    padding: 18px 24px;
+}
+
+.post-content .interactive-lab .lab-controls {
+    border-bottom: 1px solid var(--border);
+}
+
+.post-content .interactive-lab .lab-controls button,
+.post-content .interactive-lab .exit-stages button,
+.post-content .interactive-lab .address-choices button {
+    border-color: var(--border);
+    background: var(--theme-first);
+    color: var(--content-first);
+    font-size: 12px;
+}
+
+.post-content .interactive-lab .lab-controls button:hover,
+.post-content .interactive-lab .exit-stages button:hover,
+.post-content .interactive-lab .address-choices button:hover,
+.post-content .interactive-lab .exit-stages button.active,
+.post-content .interactive-lab .address-choices button.active {
+    border-color: var(--accent-first);
+    background: var(--accent-second);
+}
+
+.post-content .interactive-lab .entry-grid {
+    gap: 20px;
+    padding: 0 24px 20px;
+}
+
+.post-content .interactive-lab .assembly-list,
+.post-content .interactive-lab .state-panel {
+    padding-top: 20px;
+}
+
+.post-content .interactive-lab .state-panel {
+    padding-left: 20px;
+    border-left-color: var(--border);
+}
+
+.post-content .interactive-lab .step-explanation,
+.post-content .interactive-lab .exit-view,
+.post-content .interactive-lab .address-view {
+    margin: 0 24px 20px;
+    padding: 16px 18px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--theme-first);
+}
+
+.post-content .interactive-lab .lab-note,
+.post-content .interactive-lab noscript {
+    display: block;
+    padding: 0 24px 20px;
+}
+
+/* Screenshots have a framed viewing surface and open at their original size. */
+.post-content figure.shot {
+    margin: 24px 0 10px !important;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--theme-first);
+    box-shadow: 0 12px 26px rgba(6, 12, 20, 0.16);
+}
+
+.post-content figure.shot .shot-link {
+    position: relative;
+    display: block;
+    cursor: zoom-in;
+    overflow: hidden;
+    border-radius: 6px;
+    background: #0e151d;
+}
+
+.post-content figure.shot .shot-link::after {
+    content: 'OPEN FULL SIZE ↗';
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    padding: 5px 8px;
+    border: 1px solid rgba(216, 229, 243, 0.3);
+    border-radius: 4px;
+    background: rgba(14, 21, 29, 0.82);
+    color: #d8e5f3;
+    font: 700 9px/1.2 'Roboto Mono', Consolas, monospace;
+    letter-spacing: 0.08em;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.post-content figure.shot .shot-link:hover::after,
+.post-content figure.shot .shot-link:focus-visible::after {
+    opacity: 1;
+}
+
+.post-content figure.shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin: 0 !important;
+    border: 0;
+    border-radius: 6px;
+    background: #0e151d;
+}
+
+.post-content figure.shot figcaption {
+    margin: 9px 2px 1px;
+    color: var(--content-second);
+    font: 500 11px/1.6 'Roboto Mono', Consolas, monospace;
+}
+
+.post-content .shot-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin: 24px 0 10px !important;
+}
+
+.post-content .shot-pair figure.shot {
+    margin: 0 !important;
+}
+
+@media (max-width: 760px) {
+    .post-content pre {
+        margin-right: 0 !important;
+    }
+
+    .post-content pre > code {
+        padding: 16px 14px 18px !important;
+        font-size: 12px !important;
+    }
+
+    .post-content .interactive-lab .lab-controls {
+        display: flex !important;
+        flex-wrap: wrap;
+    }
+
+    .post-content .interactive-lab .entry-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .post-content .interactive-lab .state-panel {
+        padding: 20px 0 0;
+        border-top: 1px solid var(--border);
+        border-left: 0;
+    }
+
+    .post-content .interactive-lab .exit-stages,
+    .post-content .interactive-lab .address-choices {
+        flex-wrap: wrap;
+    }
+
+    .post-content .interactive-lab .exit-stages button,
+    .post-content .interactive-lab .address-choices button {
+        min-width: 120px;
+    }
+
+    .post-content .shot-pair {
+        grid-template-columns: 1fr;
+    }
+
+    .post-content figure.shot .shot-link::after {
+        opacity: 1;
+    }
+}
