@@ -8,6 +8,7 @@ tags:
   - VMProtect
   - Reverse Engineering
 description: Following a VMProtect 3.9.4 virtualized function from its entry stub through decode, dispatch, handlers and the exit that returns control to native code.
+image: /images/vmp-exit-range-memory-map.png
 ---
 <div class="study-intro"><p class="dek">Following <code>vmp_target</code> from its first stack write to the transfer that returns control to native code.</p><div class="trace-strip"><span class="trace-caption">THE PATH IN THIS SAMPLE <small>RVAs, hexadecimal</small></span><div><a href="#entry-lab">1440 <small>entry</small></a><span>→</span><a href="#6-decoding-and-dispatch-with-actual-instructions">1D79B <small>dispatch</small></a><span>⋯</span><a href="#exit-lab">21FAA <small>exit transfer</small></a><span>→</span><a href="#exit-lab">26C8 <small>native code</small></a></div></div></div>
 <p>The sample is an exported <code>vmp_target</code> in <strong>lab_vmp.exe</strong>, protected with <strong>VMProtect 3.9.4</strong>. Every register assignment, constant, and address below belongs to this one generated VM, not to the version as a whole.</p>
