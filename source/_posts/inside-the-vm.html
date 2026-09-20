@@ -14,7 +14,7 @@ description: Following a VMProtect 3.9.4 virtualized function from its entry stu
 <p>The method is to establish instruction effects, follow state, and verify transfers. Matching the expected printed text is a useful final check; it is not how a VM exit is identified.</p>
 <p>Scope: the source and unprotected build were inspected; the protected function was traced from its entry stub to native code, then continued through the printing routine to its caller. That establishes one executed path, not every handler or path in the protector.</p>
 <p>Protected SHA-256: <code>a0a136fd756eb40c65761168d8936fa460e362ec42be9adde53cfc16e5e11436</code>.</p>
-<p>The trace and script for this write-up are <a href="/downloads/hello_full_trace.txt">hello_full_trace.txt</a> and <a href="/downloads/find_vm_transitions.py">find_vm_transitions.py</a>. Addresses from any other build do not apply here.</p>
+<p>The trace and script for this write-up are available to <a href="/downloads/hello_full_trace.txt">download as hello_full_trace.txt</a> and <a href="/downloads/find_vm_transitions.py">download as find_vm_transitions.py</a>. Addresses from any other build do not apply here.</p>
 <h2 id="how-to-use-this-article">Reading order</h2>
 <p>Read sections 1–8 first: they establish the native baseline, entry stub, workspace, dispatch, and handler effect for this sample. Sections 9–12 then show how to find and prove the exit. Section 13 replays that verification in IDA and x64dbg; 13A extracts the reusable workflow, and 13B turns this sample into a verification checklist. Sections 14–16 cover capture points, limits, and references.</p>
 <p>The sidebar follows that order. The three interactive labs are marked where they belong: entry, exit, and restoration.</p>
@@ -382,14 +382,8 @@ ticnd &quot;cip &lt; mod.main()+0x14000 || cip &gt;= mod.main()+0x27FDB4&quot;, 
 <p class="vm-stage"><b>Where you are</b> Analysis tooling · no execution</p>
 <h2 id="10-small-script-to-list-those-candidates">10. Small script to list those candidates</h2>
 <p>The script below reads either the compact format above or the 14-column full trace. It uses only the specified ranges and consecutive executed addresses; it has no embedded exit RVA or expected Hello DALI output.</p>
-<p>The complete script is <a href="/downloads/find_vm_transitions.py"><code>find_vm_transitions.py</code></a>:</p>
-<pre><code class="language-python">"""Find executed VM-range departures, not automatically verified VM exits.
-
-Input is an uninterrupted, single-thread x64dbg pre-instruction text trace.
-Accepts RIP|RSP|RAX|RCX|instruction, or the article's 14-column full trace.
-All trace numbers are hexadecimal. Ranges are half-open RVAs.
-"""
-import argparse
+<p>The complete script is available as <a href="/downloads/find_vm_transitions.py">Download <code>find_vm_transitions.py</code></a>:</p>
+<pre><code class="language-python">import argparse
 import json
 from pathlib import Path
 

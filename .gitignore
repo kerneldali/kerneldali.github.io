@@ -3,7 +3,7 @@ node_modules/
 
 # Generated site and standalone export
 public/
-VMProtect_Study_Guide.html
+VMProtect_3.9.4_Analysis.html
 
 # Hexo runtime database and logs
 db.json

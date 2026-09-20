@@ -101,7 +101,7 @@ Alternatively, edit `url` and `root` directly in `_config.yml` and run `npm run 
 ## Standalone article export
 
 `npm run export` inlines the built study post into a single
-`VMProtect_Study_Guide.html` at the project root (git-ignored). Run `npm run build`
+`VMProtect_3.9.4_Analysis.html` at the project root (git-ignored). Run `npm run build`
 first.
 
 ## Credits

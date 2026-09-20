@@ -1,9 +1,3 @@
-"""Find executed VM-range departures, not automatically verified VM exits.
-
-Input is an uninterrupted, single-thread x64dbg pre-instruction text trace.
-Accepts RIP|RSP|RAX|RCX|instruction, or the article's 14-column full trace.
-All trace numbers are hexadecimal. Ranges are half-open RVAs.
-"""
 import argparse
 import json
 from pathlib import Path

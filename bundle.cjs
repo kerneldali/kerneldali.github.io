@@ -9,7 +9,7 @@ const path = require('path');
 
 const folder = path.join(__dirname, 'public');
 const entry = path.join(folder, 'inside-the-vm', 'index.html');
-const out = path.join(__dirname, 'VMProtect_Study_Guide.html');
+const out = path.join(__dirname, 'VMProtect_3.9.4_Analysis.html');
 
 if (!fs.existsSync(entry)) {
     console.error('Study post not found at ' + entry + '\nRun `npm run build` first.');
