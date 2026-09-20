@@ -3,8 +3,6 @@
 
 # Branding
 favicon: /images/dali-logo.png
-avatar: /images/dali-logo.png
-logo: /images/dali-logo.png
 
 # Strings cycled by the navbar typing effect
 typed:

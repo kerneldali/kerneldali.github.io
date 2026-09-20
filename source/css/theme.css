@@ -179,36 +179,6 @@ hr {
   position: absolute;
   right: 0;
 }
-.navbar .navbar-brand {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  position: relative;
-  padding: 0;
-}
-.navbar .navbar-brand .site-logo {
-  display: block;
-  box-sizing: border-box;
-  height: var(--navbar-height);
-  object-fit: contain;
-  width: auto;
-  padding: 8px 0;
-   filter: drop-shadow(0 2px 6px rgba(121, 206, 235, 0.35));
-}
-.navbar .navbar-brand::after {
-  animation: badge-pulse 3s ease-in-out infinite;
-  background: var(--accent-first);
-  border: 2px solid var(--theme-first);
-  border-radius: 50%;
-  box-shadow: 0 0 10px var(--accent-first);
-  content: '';
-  display: block;
-  height: 11px;
-  width: 11px;
-  position: absolute;
-  right: 0;
-  top: 22px;
-}
 .navbar .navbar-nav {
   width: 100%;
   justify-content: flex-end;
@@ -306,10 +276,6 @@ hr {
   .navbar {
     padding: 0 30px !important;
     margin-bottom: 30px;
-  }
-  .navbar .navbar-brand .site-logo {
-    height: var(--navbar-height);
-    width: auto;
   }
   .navbar .nav-item {
     padding: 16px 24px;
